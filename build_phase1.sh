@@ -37,19 +37,31 @@ NC='\033[0m' # No Color
 
 # Logging functions
 log_info() {
-    echo -e "${BLUE}[INFO]${NC} $1" | tee -a "$LOG_FILE"
+    echo -e "${BLUE}[INFO]${NC} $1"
+    if [[ -f "$LOG_FILE" ]]; then
+        echo -e "${BLUE}[INFO]${NC} $1" >> "$LOG_FILE"
+    fi
 }
 
 log_success() {
-    echo -e "${GREEN}[SUCCESS]${NC} $1" | tee -a "$LOG_FILE"
+    echo -e "${GREEN}[SUCCESS]${NC} $1"
+    if [[ -f "$LOG_FILE" ]]; then
+        echo -e "${GREEN}[SUCCESS]${NC} $1" >> "$LOG_FILE"
+    fi
 }
 
 log_warning() {
-    echo -e "${YELLOW}[WARNING]${NC} $1" | tee -a "$LOG_FILE"
+    echo -e "${YELLOW}[WARNING]${NC} $1"
+    if [[ -f "$LOG_FILE" ]]; then
+        echo -e "${YELLOW}[WARNING]${NC} $1" >> "$LOG_FILE"
+    fi
 }
 
 log_error() {
-    echo -e "${RED}[ERROR]${NC} $1" | tee -a "$LOG_FILE"
+    echo -e "${RED}[ERROR]${NC} $1"
+    if [[ -f "$LOG_FILE" ]]; then
+        echo -e "${RED}[ERROR]${NC} $1" >> "$LOG_FILE"
+    fi
 }
 
 # Platform detection
@@ -95,8 +107,10 @@ detect_platform() {
 setup_build_env() {
     log_info "Setting up build environment..."
 
-    # Create build directory
+    # Create build directory first
     mkdir -p "$BUILD_DIR"
+
+    # Initialize log file after directory exists
     echo "Phase 1 Build Log - $(date)" > "$LOG_FILE"
 
     # Check for required tools
@@ -139,6 +153,7 @@ configure_cmake() {
         "$CHAKRA_DIR"
         "-DCMAKE_BUILD_TYPE=Debug"
         "-DDISABLE_JIT=ON"  # Phase 1: interpreter-only for validation
+        "-DCHAKRACORE_BUILD_SH=ON"
     )
 
     # Apple Silicon specific configuration
@@ -149,10 +164,7 @@ configure_cmake() {
             "-DCMAKE_SYSTEM_NAME=Darwin"
             "-DCMAKE_SYSTEM_PROCESSOR=arm64"
             "-DCC_TARGETS_ARM64_SH=ON"
-            "-DCC_TARGET_OS_OSX=ON"
-            "-DAPPLE_SILICON_JIT=ON"
-            "-DPROHIBIT_STP_LDP=ON"
-            "-DUSE_INDIVIDUAL_STACK_OPERATIONS=ON"
+            "-DCC_TARGET_OS_OSX_SH=ON"
         )
 
         # Cross-compilation settings for Intel Mac
