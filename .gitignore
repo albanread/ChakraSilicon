@@ -1,5 +1,6 @@
 # ChakraSilicon .gitignore
 # Exclude compiled binaries, C/C++ build artifacts, IDE files, and OS junk
+# ChakraCore source is now part of this repo (flat structure, no submodules)
 
 # -----------------------
 # OS
@@ -24,13 +25,11 @@ desktop.ini
 tags
 
 # -----------------------
-# Build directories
+# Build directories (root level and legacy)
 # -----------------------
 /build/
-build_*/
+/build_*/
 /out/
-/bin/
-/lib/
 /dist/
 /Release/
 /Debug/
@@ -46,68 +45,105 @@ build_*/
 # Keep dist structure but ignore contents
 /dist/*
 !/dist/.gitkeep
-
-# Generic intermediate directories
-obj/
-objs/
-intermediate/
-tmp/
-temp/
+!/dist/packages/
+/dist/packages/*
 
 # -----------------------
-# Compiled objects and libraries
+# ChakraCore build artifacts (ignore, but keep source)
 # -----------------------
-# Executables / Windows
-*.exe
-*.dll
-*.pdb
-*.ilk
-*.lib
+# Build directories inside ChakraCore
+ChakraCore/build/
+ChakraCore/out/
+ChakraCore/Build/out/
+ChakraCore/Build/VcBuild/
 
-# Unix / macOS shared / static libraries and objects
-*.so
-*.so.*
-*.dylib
-*.a
+# ChakraCore generated files
+ChakraCore/compile_commands.json
+ChakraCore/bin/**/ch
+ChakraCore/bin/**/ch.exe
+ChakraCore/lib/**/*.a
+ChakraCore/lib/**/*.so
+ChakraCore/lib/**/*.dylib
+ChakraCore/lib/**/*.dll
+
+# But keep ChakraCore source and headers
+!ChakraCore/**/*.cpp
+!ChakraCore/**/*.h
+!ChakraCore/**/*.c
+!ChakraCore/**/*.cc
+!ChakraCore/**/*.hpp
+!ChakraCore/**/*.hxx
+!ChakraCore/**/*.inl
+!ChakraCore/**/*.inc
+!ChakraCore/**/CMakeLists.txt
+!ChakraCore/**/*.cmake
+!ChakraCore/**/*.txt
+!ChakraCore/**/*.md
+!ChakraCore/**/*.json
+!ChakraCore/**/*.yml
+!ChakraCore/**/*.yaml
+!ChakraCore/**/*.sh
+
+# -----------------------
+# Compiled objects and libraries (global patterns)
+# -----------------------
+# Object files
 *.o
 *.obj
 *.lo
+
+# Static libraries
+*.a
 *.la
 *.lai
+*.lib
 
-# Other compiled/linked artifacts
+# Shared libraries
+*.so
+*.so.*
+*.dylib
+*.dll
+
+# Executables
+*.exe
 *.out
 *.elf
-*.mod
-*.ko
+*.app
+
+# Windows specific
+*.pdb
+*.ilk
+
+# Python
 *.pyc
 *.pyo
 
+# Other
+*.mod
+*.ko
+
 # -----------------------
-# Package / installer artifacts (often large)
+# Package / installer artifacts
 # -----------------------
 *.msi
 *.deb
 *.rpm
 *.pkg
 *.apk
-*.app
 *.run
 
-# Archives / compressed builds (except in dist/packages)
+# Archives (except in dist/packages which has specific rules)
 *.zip
 *.tar
 *.tar.gz
 *.tgz
 *.7z
+*.bz2
+*.xz
 *.sha256
 
-# But keep dist packages directory structure
-!/dist/packages/
-/dist/packages/*
-
 # -----------------------
-# Build system files
+# Build system generated files
 # -----------------------
 CMakeFiles/
 CMakeCache.txt
@@ -115,10 +151,12 @@ CMakeScripts/
 cmake_install.cmake
 install_manifest.txt
 Makefile
+*.make
 build.make
 _build/
 .build/
-*.cmake
+
+# CMake user files (but keep CMakeLists.txt and .cmake files)
 *.cmake.user
 
 # Autotools
@@ -133,6 +171,8 @@ autom4te.cache/
 meson-logs/
 meson-private/
 build.ninja
+.ninja_deps
+.ninja_log
 
 # -----------------------
 # Logs, dumps, coverage
@@ -147,9 +187,10 @@ lcov-report/
 # gcov
 *.gcda
 *.gcno
+*.gcov
 
 # -----------------------
-# IDE / Editor generated project files (Visual Studio / Xcode)
+# IDE / Editor generated project files
 # -----------------------
 .vs/
 *.suo
@@ -161,36 +202,23 @@ lcov-report/
 *.ncb
 *.sbr
 *.VC.db
-*.xcodeproj
-*.xcworkspace
+*.VC.VC.opendb
+*.xcodeproj/*
+!*.xcodeproj/project.pbxproj
+*.xcworkspace/*
+!*.xcworkspace/contents.xcworkspacedata
+*.xcuserdata
 
 # -----------------------
-# Third-party / dependency build outputs
-# -----------------------
-/deps/**/build/
-/third_party/**/build/
-/external/**/build/
-/vendor/**/build/
-
-# If you vendor prebuilt binaries in src, exclude binary libs by extension
-**/*-prebuilt.*
-**/*-binary.*
-
-# -----------------------
-# Misc
+# Temporary and backup files
 # -----------------------
 *.orig
 *.rej
 *.bak
 *.swp
+*.swo
 *.tmp
-
-# Prevent accidentally committing large binaries by path patterns
-# (common build outputs)
-**/bin/**
-**/lib/**
-**/out/**
-**/build/**
+*~
 
 # -----------------------
 # Legacy / Archive directories
@@ -199,9 +227,16 @@ lcov-report/
 /examination/
 
 # -----------------------
-# Example outputs
+# Example outputs (generated test files)
 # -----------------------
 /examples/*.txt
 /examples/*.trace
+/examples/*.log
+
+# -----------------------
+# Specific exclusions for large or generated files
+# -----------------------
+# Prevent accidentally committing large binaries in specific paths
+# (but this won't affect ChakraCore source which is explicitly included above)
 
 # End of file
