@@ -841,6 +841,106 @@ Currently, the only workaround is:
 
 ---
 
+## Additional Research: DWARF CFI Generation for JIT Frames
+
+### DWARF Exception Unwinding Foundation (RESEARCH FINDING)
+
+**Source:** External investigation of DWARF generation infrastructure
+
+**Key Components Identified:**
+
+**Files (NOT in this repository):**
+- `lib/Backend/arm64/PrologEncoderMD.cpp` (225 lines) - Generates DWARF CFI for JIT frames
+- `lib/Backend/InterpreterThunkEmitter.cpp` - Generates DWARF for interpreter thunks
+- `lib/Backend/PDataManager.cpp` - Registers unwind info with `__register_frame()`
+- `lib/Common/Memory/arm64/XDataAllocator.cpp` - Per-function DWARF registration
+- `lib/Backend/EhFrame.h` - Helper class API for generating DWARF
+
+**What This Infrastructure Does:**
+- Generates `.eh_frame` sections (CIE + FDE) for dynamically compiled code
+- Enables C++ exception handling to work across JIT↔interpreter boundaries
+- Maps ARM64 registers to DWARF register numbers (X29=29, X30=30, SP=31)
+- Registers DWARF data with macOS libunwind at runtime via `__REGISTER_FRAME()`
+
+**Key Technical Details:**
+
+1. **PrologEncoderMD Analysis:**
+   - Analyzes ARM64 instructions (STP, STR, SUB) to determine call frame effects
+   - Maps instructions to unwind operations (UWOP_PUSH_NONVOL, UWOP_ALLOC_SMALL, etc.)
+   - Distinguishes between GP registers, FP registers, and stack allocation
+   - Handles both standard ARM64 and Apple Silicon individual store patterns
+
+2. **DWARF CFI Directives Generated:**
+   - `cfi_advance(n)` - Advances program counter by n bytes
+   - `cfi_def_cfa(reg, offset)` - Defines CFA as register + offset
+   - `cfi_def_cfa_offset(offset)` - Updates CFA offset
+   - `cfi_offset(reg, offset)` - Declares register saved at CFA + offset
+
+3. **CFA (Canonical Frame Address) Tracking:**
+   ```
+   Initial state:     CFA = SP + 0
+   After STP:         CFA = SP + 16 (SP decreased by 16)
+                      FP saved at [CFA-16] = [SP+0]
+                      LR saved at [CFA-8]  = [SP+8]
+   After MOV FP, SP:  CFA = FP + 16 (now tracked via FP instead of SP)
+   ```
+
+4. **Registration Flow:**
+   - JIT compiles function → Generates ARM64 assembly
+   - PrologEncoderMD analyzes instructions → Identifies register saves, stack allocation
+   - EhFrame generates DWARF data → Creates CIE + FDE with CFI instructions
+   - XDataAllocator allocates space → Reserves memory for `.eh_frame` data
+   - PDataManager calls `__REGISTER_FRAME()` → Tells system unwinder about the function
+   - When exception thrown → macOS libunwind uses DWARF to walk stack
+
+**Code Examples from Research:**
+
+```cpp
+// PrologEncoderMD analyzing instructions:
+unsigned __int8 PrologEncoderMD::GetOp(IR::Instr *instr) {
+    switch (instr->m_opcode) {
+    case Js::OpCode::STP:  // Store Pair
+        return UWOP_PUSH_NONVOL;
+    case Js::OpCode::STR:  // Store Register (Apple Silicon)
+        return UWOP_PUSH_NONVOL;
+    case Js::OpCode::SUB:  // Stack allocation
+        return (allocSize < 512) ? UWOP_ALLOC_SMALL : UWOP_ALLOC_LARGE;
+    }
+}
+
+// Interpreter thunk DWARF generation:
+fde->cfi_advance(4);                        // After STP instruction
+fde->cfi_def_cfa_offset(ULEB128(16));       // CFA is now SP + 16
+fde->cfi_offset(GetDwarfRegNum(RegFP), ULEB128(2));  // FP saved at CFA-16
+fde->cfi_offset(GetDwarfRegNum(RegLR), ULEB128(1));  // LR saved at CFA-8
+
+// Registration with system unwinder:
+__REGISTER_FRAME(xdataInfo->address);  // Register DWARF for this function
+```
+
+**Impact on JIT Calls:**
+- Allows exceptions thrown in JIT code to be caught in interpreter frames
+- Enables exceptions thrown in interpreter to propagate through JIT frames
+- Critical for proper exception handling across dynamically compiled boundaries
+
+**Status:** ❌ NOT IMPLEMENTED - Research finding only, infrastructure not present in this repository
+
+**Implementation Notes:**
+- This represents a complete DWARF generation system
+- Requires significant low-level code for instruction analysis
+- Needs integration with memory allocator and JIT compiler
+- Must be tested extensively with exception handling scenarios
+- Related to Phase 1 and Phase 2 of the implementation plan
+
+**Related to:**
+- Phase 1: Verify DWARF Generation (this infrastructure would need to exist)
+- Phase 2: Fix DWARF Issues (these components would need debugging)
+- Exception handling root cause (absence of this infrastructure causes failures)
+
+**Note:** This is extensive research from external investigations showing what a complete DWARF solution looks like. None of this code exists in this repository and would need to be implemented from scratch or ported from the research source.
+
+---
+
 ## Additional Research: Calling Convention Issues
 
 ### Interpreter → JIT Call Convention (RESEARCH FINDING)
