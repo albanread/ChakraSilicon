@@ -1,25 +1,28 @@
 # Apple Silicon JIT Investigation - Next Steps
 
-**Status:** JIT Completely Broken - Root Cause Analysis Complete
+**Status:** RESEARCH DOCUMENT - Implementation Not Present in This Repository
 **Date:** January 2025
 **Platform:** macOS ARM64 (Apple Silicon M1/M2/M3)
 **Priority:** CRITICAL
+**Note:** This document consolidates research from external investigations. The implementations described here are NOT present in this repository and need to be implemented.
 
 ---
 
 ## Executive Summary
 
-The Apple Silicon JIT port is currently **completely non-functional** for exception handling. While basic code generation works, any exception thrown across function boundaries causes immediate termination. This document consolidates all research findings and provides a clear path forward.
+The Apple Silicon JIT port is currently **completely non-functional** for exception handling. While basic code generation works, any exception thrown across function boundaries causes immediate termination. This document consolidates research findings from external investigations and provides a clear path forward.
+
+**IMPORTANT:** The implementations described in this document (PrologEncoderMD, DWARF emission, etc.) are research findings from external sources and are **NOT implemented in this repository**. This is a research and planning document only.
 
 ### Current State
 
 | Component | Status | Notes |
 |-----------|--------|-------|
-| Basic JIT compilation | ✅ Working | Code generates and executes |
-| Same-function exceptions | ✅ Working | No unwinding needed |
-| Cross-function exceptions | ❌ BROKEN | Process terminates |
-| Interpreter exceptions | ❌ BROKEN | Even interpreter-only mode fails |
-| DWARF infrastructure | ⚠️ Partial | Code exists but untested |
+| Basic JIT compilation | ❓ Unknown | Not tested in this repo |
+| Same-function exceptions | ❓ Unknown | Not tested in this repo |
+| Cross-function exceptions | ❌ BROKEN | Known issue from research |
+| Interpreter exceptions | ❌ BROKEN | Known issue from research |
+| DWARF infrastructure | ❌ NOT IMPLEMENTED | Research only - code not in this repo |
 | Apple Silicon constraints | ✅ Documented | STP/LDP prohibition understood |
 
 ### Why This Matters
@@ -156,76 +159,76 @@ sub sp, sp, #40      // Only 8-byte aligned ❌
 
 ---
 
-## What Has Been Implemented
+## What Has Been RESEARCHED (NOT Implemented in This Repo)
 
-### 1. ARM64 PrologEncoderMD (Phase 3)
+### 1. ARM64 PrologEncoderMD (Phase 3) - RESEARCH ONLY
 
-**Files:**
+**Files (NOT in this repository):**
 - `lib/Backend/arm64/PrologEncoderMD.h`
 - `lib/Backend/arm64/PrologEncoderMD.cpp`
 
 **Purpose:** Analyze ARM64 prolog instructions and extract unwind information
 
-**Capabilities:**
+**Capabilities (from external research):**
 - Classifies instructions (STP/STR, SUB sp, ADD fp, etc.)
 - Extracts register save information
 - Handles both standard ARM64 and Apple Silicon patterns
 - Determines stack allocation sizes
 - Identifies frame pointer setup
 
-**Status:** ✅ Implemented and compiling
+**Status:** ❌ NOT IMPLEMENTED - Research findings only
 
-### 2. ARM64 DWARF Register Mapping
+### 2. ARM64 DWARF Register Mapping - RESEARCH ONLY
 
-**File:** `lib/Backend/EhFrame.cpp`
+**File (NOT in this repository):** `lib/Backend/EhFrame.cpp`
 
-**Added:**
+**Research findings:**
 - Complete ARM64 DWARF register number mapping per ABI spec
 - x0-x30 → DWARF 0-30
 - SP (x31) → DWARF 31
 - d0-d29 → DWARF 64-93
 - LR (x30) as return address register
 
-**Status:** ✅ Implemented
+**Status:** ❌ NOT IMPLEMENTED - Research findings only
 
-### 3. ARM64 CFI Emission
+### 3. ARM64 CFI Emission - RESEARCH ONLY
 
-**File:** `lib/Backend/PrologEncoder.cpp`
+**File (NOT in this repository):** `lib/Backend/PrologEncoder.cpp`
 
-**Added ARM64 support for:**
+**Research findings for ARM64 support:**
 - Register pair saves (STP)
 - Individual register saves (STR) - for Apple Silicon
 - Stack allocation (SUB sp, sp, #imm)
 - NEON/FP register saves
 - Frame pointer setup (ADD fp, sp, #offset)
 
-**Status:** ✅ Implemented and compiling
+**Status:** ❌ NOT IMPLEMENTED - Research findings only
 
-### 4. Build System Integration
+### 4. Build System Integration - RESEARCH ONLY
 
-**Files:** `lib/Backend/CMakeLists.txt`, `lib/Backend/Backend.h`
+**Files (NOT in this repository):** `lib/Backend/CMakeLists.txt`, `lib/Backend/Backend.h`
 
-**Changes:**
+**Research findings:**
 - Added ARM64 to PrologEncoder build
 - Included PrologEncoder.h for ARM64 target
 - Enabled EhFrame.cpp for ARM64
 
-**Status:** ✅ Complete - full project builds
+**Status:** ❌ NOT IMPLEMENTED - Research findings only
 
-### 5. Diagnostic Infrastructure
+### 5. Diagnostic Infrastructure - RESEARCH ONLY
 
-**Files:**
+**Files (NOT in this repository):**
 - `lib/Backend/EmitBuffer.h` / `.cpp` - Enhanced JIT disassembly with function names
 - `lib/Backend/arm64/LowerMD.cpp` - Call site diagnostics
 - `lib/Runtime/Language/InterpreterStackFrame.cpp` - Thunk entry logging
 - `lib/Backend/JitCallDiagnostics.h` / `.cpp` - Register state capture
 
-**Outputs:**
+**Research findings for outputs:**
 - `/tmp/chakra_jit_disasm_<pid>.txt` - JIT disassembly
 - `/tmp/jit_call_diagnostics.txt` - Register state before/after calls
 - `/tmp/interpreter_thunk_dump.txt` - Interpreter entry points
 
-**Status:** ✅ Complete - provides detailed debugging information
+**Status:** ❌ NOT IMPLEMENTED - Research findings only
 
 ---
 
@@ -851,8 +854,8 @@ The Apple Silicon JIT port has made significant progress in code generation and 
 
 ### Key Insights
 
-1. **Infrastructure Exists** - DWARF generation code is written and compiles
-2. **Not Tested** - We don't know if it works or is even being executed
+1. **Research Complete** - External investigations have identified the issues and solutions
+2. **Nothing Implemented** - None of the researched solutions are in this repository
 3. **Deeper Issue** - Even interpreter mode fails, suggesting runtime integration problems
 4. **Clear Path** - Five phases of work with measurable milestones
 5. **High Risk** - Phase 3 (interpreter exceptions) could uncover fundamental issues
@@ -878,7 +881,10 @@ This is **hard work** that requires expertise in multiple domains. The person ta
 
 ---
 
-**Document Status:** Complete - Ready for implementation
-**Next Action:** Begin Phase 1 - Verify DWARF Generation
+**Document Status:** Research consolidation complete - Implementation required
+**Document Type:** Planning and research document - NOT implementation
+**Next Action:** Implement Phase 1 solutions from research findings
 **Owner:** TBD
 **Priority:** CRITICAL
+
+**DISCLAIMER:** This document describes research findings and proposed solutions from external investigations. The code and implementations described here do **NOT exist in this repository** and need to be implemented from scratch based on these findings.
