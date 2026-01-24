@@ -1,0 +1,177 @@
+#-------------------------------------------------------------------------------------------------------
+# LLDB Script: Debug x64 JIT→INT Thunk
+#
+# Purpose: Examine how the working x64 implementation handles JIT-to-interpreter transitions
+#
+# Usage:
+#   lldb ./dist/chjitx64/ch
+#   (lldb) command source examination/debug_x64_thunk.lldb
+#   (lldb) run examination/test_jit_to_int.js
+#
+# This script will:
+#   1. Set breakpoints in the thunk and interpreter entry points
+#   2. Automatically capture register and stack state
+#   3. Disassemble key sections
+#   4. Log everything for comparison with ARM64
+#-------------------------------------------------------------------------------------------------------
+
+# Settings for better output
+settings set target.x86-disassembly-flavor intel
+settings set stop-disassembly-count 20
+settings set stop-line-count-before 5
+settings set stop-line-count-after 5
+
+echo \n=== x64 JIT→INT Thunk Debugger ===\n
+echo This script will help you understand the working x64 implementation\n
+echo \n
+
+#-------------------------------------------------------------------------------------------------------
+# Breakpoint 1: Interpreter Thunk Entry
+#-------------------------------------------------------------------------------------------------------
+echo Setting breakpoint on interpreter thunk...\n
+
+# The thunk is generated at runtime, so we can't break on it directly yet
+# Instead, break on the generator
+breakpoint set -r "InterpreterThunkEmitter.*Emit" -N thunk_gen
+breakpoint command add thunk_gen
+echo === Thunk Generation Breakpoint ===
+echo Generated interpreter thunk - examining code...
+register read rdi rsi rdx rcx r8 r9
+disassemble -c 30
+continue
+DONE
+
+#-------------------------------------------------------------------------------------------------------
+# Breakpoint 2: Interpreter Helper Entry
+#-------------------------------------------------------------------------------------------------------
+echo Setting breakpoint on interpreter helper...\n
+
+breakpoint set -n "InterpreterStackFrame::InterpreterHelper" -N interp_helper
+breakpoint command add interp_helper
+echo \n=== Interpreter Helper Entry ===
+echo This is where JIT code transitions to interpreter
+echo \nRegisters (x64 calling convention):
+register read rdi rsi rdx rcx r8 r9 rax rbx rsp rbp
+echo \nStack pointer and top of stack:
+memory read -f x -c 16 $rsp
+echo \nBacktrace:
+bt 5
+echo \nDisassembly:
+disassemble -c 20
+echo \n--- Continuing execution ---\n
+continue
+DONE
+
+#-------------------------------------------------------------------------------------------------------
+# Breakpoint 3: Dynamic Interpreter Thunk (if we can find it)
+#-------------------------------------------------------------------------------------------------------
+echo Setting breakpoint on dynamic interpreter thunk...\n
+
+breakpoint set -r ".*DynamicInterpreterThunk.*" -N dynamic_thunk
+breakpoint command add dynamic_thunk
+echo \n=== Dynamic Interpreter Thunk ===
+echo \nRegisters:
+register read rdi rsi rdx rcx r8 r9 rax rbx rsp rbp
+echo \nStack:
+memory read -f x -c 20 $rsp
+echo \nDisassembly:
+disassemble -c 30
+echo \n--- Continuing ---\n
+continue
+DONE
+
+#-------------------------------------------------------------------------------------------------------
+# Breakpoint 4: Built-in Function Entry (Math.max as example)
+#-------------------------------------------------------------------------------------------------------
+echo Setting breakpoint on Math.max...\n
+
+breakpoint set -r "Math.*Max.*Entry" -N math_max
+breakpoint command add math_max
+echo \n=== Built-in Function Entry (Math.max) ===
+echo \nHow did we get here from JIT code?
+echo \nRegisters:
+register read rdi rsi rdx rcx r8 r9 rax rbx rsp rbp
+echo \nStack:
+memory read -f x -c 16 $rsp
+echo \nBacktrace:
+bt 10
+echo \nDisassembly:
+disassemble -c 20
+echo \n--- Continuing ---\n
+continue
+DONE
+
+#-------------------------------------------------------------------------------------------------------
+# Breakpoint 5: JavascriptCallStackLayout (parameter access)
+#-------------------------------------------------------------------------------------------------------
+echo Setting breakpoint on call stack layout...\n
+
+breakpoint set -r "JavascriptCallStackLayout" -N call_layout
+breakpoint command add call_layout
+echo \n=== Call Stack Layout Access ===
+echo This shows how parameters are accessed
+echo \nRegisters:
+register read rdi rsi rdx rcx r8 r9 rax rbx rsp rbp
+echo \nStack frame:
+memory read -f x -c 32 $rsp
+echo \nDisassembly:
+disassemble -c 20
+echo \n--- Continuing ---\n
+continue
+DONE
+
+#-------------------------------------------------------------------------------------------------------
+# Custom commands for manual inspection
+#-------------------------------------------------------------------------------------------------------
+
+# Command to dump current state
+command alias dump_state register read rdi rsi rdx rcx r8 r9 rax rbx rsp rbp r10 r11 r12 r13 r14 r15
+
+# Command to dump stack
+command alias dump_stack memory read -f x -c 32 $rsp
+
+# Command to disassemble with context
+command alias dis_context disassemble -c 40
+
+#-------------------------------------------------------------------------------------------------------
+# Instructions
+#-------------------------------------------------------------------------------------------------------
+
+echo \n=== Breakpoints Set ===
+echo 1. thunk_gen      - Thunk generation
+echo 2. interp_helper  - Interpreter helper entry (KEY - this is where transition happens)
+echo 3. dynamic_thunk  - Dynamic thunk (if found)
+echo 4. math_max       - Built-in function entry
+echo 5. call_layout    - Call stack layout access
+echo \n
+
+echo === Custom Commands ===
+echo - dump_state      : Show all relevant registers
+echo - dump_stack      : Show stack contents
+echo - dis_context     : Disassemble with more context
+echo \n
+
+echo === Ready to Debug ===
+echo Type 'run examination/test_jit_to_int.js' to start
+echo \n
+echo When breakpoint hits:
+echo   1. Examine register values (especially rdi, rsi, rdx - first 3 params)
+echo   2. Look at stack layout (dump_stack)
+echo   3. Study disassembly (dis_context)
+echo   4. Compare with ARM64 thunk behavior
+echo \n
+echo === Key Questions to Answer ===
+echo   Q1: What values are in rdi, rsi, rdx, rcx, r8, r9 at thunk entry?
+echo   Q2: What does the thunk do with these values?
+echo   Q3: Where does it store them on the stack?
+echo   Q4: How does ARGUMENTS macro find parameters?
+echo   Q5: What is the stack frame layout?
+echo \n
+echo Happy debugging! 🐛
+echo \n
+
+# Enable instruction stepping
+settings set target.process.thread.step-avoid-regexp ""
+
+# Show registers on stop
+settings set target.show-registers-on-stop true
