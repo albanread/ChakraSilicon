@@ -172,17 +172,14 @@ constexpr BYTE ThunkAddressOffset = 20;
 
 //TODO: saravind :Implement Range Check for ARM64
 constexpr BYTE InterpreterThunk[InterpreterThunkEmitter::InterpreterThunkSize] = {
-#ifdef _WIN32
-    0xFD, 0x7B, 0xBB, 0xA9,                                         //stp         fp, lr, [sp, #-80]!   ;Prologue
+    // All ARM64 platforms now use the same prologue to ensure parameters are saved to stack
+    // This is required for the ARGUMENTS macro to work correctly on Darwin (macOS)
+    0xFD, 0x7B, 0xBB, 0xA9,                                         //stp         fp, lr, [sp, #-80]!   ;Prologue - allocate 80 bytes
     0xFD, 0x03, 0x00, 0x91,                                         //mov         fp, sp                ;update frame pointer to the stack pointer
-    0xE0, 0x07, 0x01, 0xA9,                                         //stp         x0, x1, [sp, #16]     ;Prologue again; save all registers
-    0xE2, 0x0F, 0x02, 0xA9,                                         //stp         x2, x3, [sp, #32]
-    0xE4, 0x17, 0x03, 0xA9,                                         //stp         x4, x5, [sp, #48]
-    0xE6, 0x1F, 0x04, 0xA9,                                         //stp         x6, x7, [sp, #64]
-#else
-    0xFD, 0x7B, 0xBF, 0xA9,                                         //stp         fp, lr, [sp, #-16]!   ;Prologue
-    0xFD, 0x03, 0x00, 0x91,                                         //mov         fp, sp                ;update frame pointer to the stack pointer
-#endif
+    0xE0, 0x07, 0x01, 0xA9,                                         //stp         x0, x1, [sp, #16]     ;Save function and callInfo to stack
+    0xE2, 0x0F, 0x02, 0xA9,                                         //stp         x2, x3, [sp, #32]     ;Save x2, x3 to stack
+    0xE4, 0x17, 0x03, 0xA9,                                         //stp         x4, x5, [sp, #48]     ;Save x4, x5 to stack
+    0xE6, 0x1F, 0x04, 0xA9,                                         //stp         x6, x7, [sp, #64]     ;Save x6, x7 to stack
     0x02, 0x00, 0x40, 0xF9,                                         //ldr         x2, [x0, #0x00]       ;offset will be replaced with Offset of FunctionInfo
     0x40, 0x00, 0x40, 0xF9,                                         //ldr         x0, [x2, #0x00]       ;offset will be replaced with Offset of FunctionProxy
     0x03, 0x00, 0x40, 0xF9,                                         //ldr         x3, [x0, #0x00]       ;offset will be replaced with offset of DynamicInterpreterThunk
@@ -204,11 +201,8 @@ constexpr BYTE Call[] = {
 };
 
 constexpr BYTE Epilog[] = {
-#ifdef _WIN32
+    // All ARM64 platforms now use the same epilog (restore 80 bytes)
     0xfd, 0x7b, 0xc5, 0xa8,                                         // ldp         fp, lr, [sp], #80
-#else
-    0xfd, 0x7b, 0xc1, 0xa8,                                         // ldp         fp, lr, [sp], #16
-#endif
     0xc0, 0x03, 0x5f, 0xd6                                          // ret
 };
 #else // x86

@@ -165,12 +165,19 @@ build_target() {
 
     # Set JIT flags based on mode
     local jit_flag=""
+    local apple_silicon_flag=""
     if [[ "$mode" == "interpreter" ]]; then
         jit_flag="-DDISABLE_JIT=ON"
         log_info "JIT: Disabled"
     else
         jit_flag="-DDISABLE_JIT=OFF"
         log_info "JIT: Enabled"
+    fi
+
+    # Set Apple Silicon JIT flag for ARM64
+    if [[ "$arch" == "arm64" ]]; then
+        apple_silicon_flag="-DAPPLE_SILICON_JIT=ON"
+        log_info "Apple Silicon JIT: Enabled"
     fi
 
     # Configure with CMake
@@ -183,6 +190,7 @@ build_target() {
         -DCMAKE_OSX_ARCHITECTURES="$arch" \
         -DCMAKE_SYSTEM_PROCESSOR="$cmake_arch" \
         $jit_flag \
+        $apple_silicon_flag \
         -DCMAKE_INSTALL_PREFIX="$dist_dir" \
         -DBUILD_TESTING=OFF
 
