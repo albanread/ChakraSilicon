@@ -1,0 +1,274 @@
+--- a/lib/Backend/arm64/LowerMD.cpp
++++ b/lib/Backend/arm64/LowerMD.cpp
+@@ -5,6 +5,10 @@
+ //-------------------------------------------------------------------------------------------------------
+ #include "Backend.h"
+ 
++#if defined(APPLE_SILICON_JIT)
++#include "AppleSilicon/AppleSiliconStackMD.h"
++#endif
++
+ #ifdef _M_ARM64_OR_ARM32
+ 
+ const uint PAGESIZE = 0x1000;
+@@ -1220,8 +1224,8 @@ IR::Instr * LowererMD::LowerEntryInstr(IR::EntryInstr * entryInstr)
+     // prologStart:
+     //    sub   sp, sp, #allocation1
+     //    stp   d8-d15, [sp, #savedDoublesOffset - allocation2]
+-    //    stp   x19-x28, [sp, #savedRegistersOffset - allocation2]
+-    //    stp   fp, lr, [sp, #fpLrOffset - allocation2]
++    //    stp   x19-x28, [sp, #savedRegistersOffset - allocation2]    // Individual STR on Apple Silicon
++    //    stp   fp, lr, [sp, #fpLrOffset - allocation2]               // Individual STR on Apple Silicon
+     //    add   fp, sp, #fpLrOffset - allocation2
+     //    sub   sp, sp, #allocation2 (might be call to _chkstk)
+     // prologEnd:
+@@ -1267,11 +1271,27 @@ IR::Instr * LowererMD::LowerEntryInstr(IR::EntryInstr * entryInstr)
+             if (layout.SavedDoubles().Test(curReg))
+             {
+                 RegNum nextReg = RegNum(curReg + 1);
++#ifdef APPLE_SILICON_JIT
++                // Apple Silicon: Use individual FSTR instructions instead of FSTP
++                IR::RegOpnd* floatReg1 = IR::RegOpnd::New(curReg, TyMachDouble, this->m_func);
++                IR::RegOpnd* floatReg2 = IR::RegOpnd::New(nextReg, TyMachDouble, this->m_func);
++                IR::IndirOpnd* stackLoc = IR::IndirOpnd::New(spOpnd, curOffset, TyMachReg, this->m_func);
++                
++                AppleSiliconStackManager::EmitFloatStorePair_Individual(
++                    insertInstr, floatReg1, floatReg2, stackLoc, this->m_func);
++                
++                APPLE_SILICON_DEBUG_LOG("Converted FSTP to individual FSTR in function prolog");
++#else
++                // Standard ARM64: Use efficient FSTP instruction
+                 IR::Instr * instrStp = IR::Instr::New(Js::OpCode::FSTP,
+                     IR::IndirOpnd::New(spOpnd, curOffset, TyMachReg, this->m_func),
+                     IR::RegOpnd::New(curReg, TyMachDouble, this->m_func),
+                     IR::RegOpnd::New(nextReg, TyMachDouble, this->m_func), this->m_func);
+                 insertInstr->InsertBefore(instrStp);
++#endif
++                
++#if defined(APPLE_SILICON_JIT) && defined(_DEBUG)
++                AppleSiliconStackManager::LogStackOperation("Float register save (prolog)", nullptr);
++#endif
+                 curOffset += 2 * MachRegDouble;
+             }
+         }
+@@ -1286,11 +1306,27 @@ IR::Instr * LowererMD::LowerEntryInstr(IR::EntryInstr * entryInstr)
+             if (layout.SavedRegisters().Test(curReg))
+             {
+                 RegNum nextReg = RegNum(curReg + 1);
++#ifdef APPLE_SILICON_JIT
++                // Apple Silicon: Use individual STR instructions instead of STP
++                IR::RegOpnd* reg1 = IR::RegOpnd::New(curReg, TyMachReg, this->m_func);
++                IR::RegOpnd* reg2 = IR::RegOpnd::New(nextReg, TyMachReg, this->m_func);
++                IR::IndirOpnd* stackLoc = IR::IndirOpnd::New(spOpnd, curOffset, TyMachReg, this->m_func);
++                
++                AppleSiliconStackManager::EmitStorePair_Individual(
++                    insertInstr, reg1, reg2, stackLoc, this->m_func);
++                    
++                APPLE_SILICON_DEBUG_LOG("Converted STP to individual STR in function prolog");
++#else
++                // Standard ARM64: Use efficient STP instruction
+                 IR::Instr * instrStp = IR::Instr::New(Js::OpCode::STP,
+                     IR::IndirOpnd::New(spOpnd, curOffset, TyMachReg, this->m_func),
+                     IR::RegOpnd::New(curReg, TyMachReg, this->m_func),
+                     IR::RegOpnd::New(nextReg, TyMachReg, this->m_func), this->m_func);
+                 insertInstr->InsertBefore(instrStp);
++#endif
++                
++#if defined(APPLE_SILICON_JIT) && defined(_DEBUG)
++                AppleSiliconStackManager::LogStackOperation("General register save (prolog)", nullptr);
++#endif
+                 curOffset += 2 * MachRegInt;
+             }
+         }
+@@ -1301,10 +1337,24 @@ IR::Instr * LowererMD::LowerEntryInstr(IR::EntryInstr * entryInstr)
+     if (layout.HasCalls())
+     {
+         // STP fp, lr, [sp, #offs]
+         ULONG fpOffset = layout.FpLrOffset() - stackAllocation2;
++#ifdef APPLE_SILICON_JIT
++        // Apple Silicon: Use individual STR instructions for FP/LR save
++        IR::RegOpnd* fpReg = IR::RegOpnd::New(RegFP, TyMachReg, this->m_func);
++        IR::RegOpnd* lrReg = IR::RegOpnd::New(RegLR, TyMachReg, this->m_func);
++        IR::IndirOpnd* fpLrLocation = IR::IndirOpnd::New(spOpnd, fpOffset, TyMachReg, this->m_func);
++        
++        AppleSiliconStackManager::EmitStorePair_Individual(
++            insertInstr, fpReg, lrReg, fpLrLocation, this->m_func);
++            
++        APPLE_SILICON_DEBUG_LOG("Converted FP/LR STP to individual STR in function prolog");
++#else
++        // Standard ARM64: Use efficient STP for FP/LR
+         IR::Instr * instrStp = IR::Instr::New(Js::OpCode::STP,
+             IR::IndirOpnd::New(spOpnd, fpOffset, TyMachReg, this->m_func),
+             fpOpnd, IR::RegOpnd::New(RegLR, TyMachReg, this->m_func), this->m_func);
+         insertInstr->InsertBefore(instrStp);
++#endif
+ 
+         // ADD fp, sp, #offs
+         // For exception handling, do this part AFTER the prolog to allow for proper unwinding
+@@ -1340,9 +1390,19 @@ IR::Instr * LowererMD::LowerEntryInstr(IR::EntryInstr * entryInstr)
+     // Zero out call frame
+     if (layout.ArgSlotOffset() > 0)
+     {
++#ifdef APPLE_SILICON_JIT
++        // Apple Silicon: Use individual STR for zeroing call frame
++        IR::RegOpnd* zrOpnd = IR::RegOpnd::New(nullptr, RegZR, TyMachReg, this->m_func);
++        IR::IndirOpnd* argSlotLoc = IR::IndirOpnd::New(regAreaBaseOpnd, layout.ArgSlotOffset() - regAreaBaseOffset, TyMachReg, this->m_func);
++        
++        AppleSiliconStackManager::EmitStorePair_Individual(
++            insertInstr, zrOpnd, zrOpnd, argSlotLoc, this->m_func);
++#else
+         IR::Instr * instrStp = IR::Instr::New(Js::OpCode::STP,
+             IR::IndirOpnd::New(regAreaBaseOpnd, layout.ArgSlotOffset() - regAreaBaseOffset, TyMachReg, this->m_func),
+             zrOpnd, zrOpnd, this->m_func);
+         insertInstr->InsertBefore(instrStp);
++#endif
+     }
+ 
+     // Save parameter registers
+@@ -1356,11 +1416,25 @@ IR::Instr * LowererMD::LowerEntryInstr(IR::EntryInstr * entryInstr)
+             if (curReg == RegR7 || layout.ParamRegistersOffset() > 0)
+             {
+                 RegNum nextReg = RegNum(curReg + 1);
++#ifdef APPLE_SILICON_JIT
++                // Apple Silicon: Use individual STR for parameter register saves
++                IR::RegOpnd* paramReg1 = IR::RegOpnd::New(curReg, TyMachReg, this->m_func);
++                IR::RegOpnd* paramReg2 = IR::RegOpnd::New(nextReg, TyMachReg, this->m_func);
++                IR::IndirOpnd* paramLoc = IR::IndirOpnd::New(regAreaBaseOpnd, curOffset, TyMachReg, this->m_func);
++                
++                AppleSiliconStackManager::EmitStorePair_Individual(
++                    insertInstr, paramReg1, paramReg2, paramLoc, this->m_func);
++#else
+                 IR::Instr * instrStp = IR::Instr::New(Js::OpCode::STP,
+                     IR::IndirOpnd::New(regAreaBaseOpnd, curOffset, TyMachReg, this->m_func),
+                     IR::RegOpnd::New(curReg, TyMachReg, this->m_func),
+                     IR::RegOpnd::New(nextReg, TyMachReg, this->m_func), this->m_func);
+                 insertInstr->InsertBefore(instrStp);
++#endif
++                
++#if defined(APPLE_SILICON_JIT) && defined(_DEBUG)
++                AppleSiliconStackManager::LogStackOperation("Parameter register save", nullptr);
++#endif
+                 curOffset += 2 * MachRegInt;
+             }
+         }
+@@ -1432,10 +1506,24 @@ IR::Instr * LowererMD::LowerExitInstr(IR::ExitInstr * exitInstr)
+     // Restore FP/LR
+     if (layout.HasCalls())
+     {
+         // LDP fp, lr, [sp, #offs]
+         ULONG fpOffset = layout.FpLrOffset() - stackAllocation2;
++#ifdef APPLE_SILICON_JIT
++        // Apple Silicon: Use individual LDR instructions for FP/LR restore
++        IR::RegOpnd* fpReg = IR::RegOpnd::New(RegFP, TyMachReg, this->m_func);
++        IR::RegOpnd* lrReg = IR::RegOpnd::New(RegLR, TyMachReg, this->m_func);
++        IR::IndirOpnd* fpLrLocation = IR::IndirOpnd::New(spOpnd, fpOffset, TyMachReg, this->m_func);
++        
++        AppleSiliconStackManager::EmitLoadPair_Individual(
++            exitInstr, fpReg, lrReg, fpLrLocation, this->m_func);
++            
++        APPLE_SILICON_DEBUG_LOG("Converted FP/LR LDP to individual LDR in function epilog");
++#else
++        // Standard ARM64: Use efficient LDP for FP/LR
+         IR::Instr * instrLdp = IR::Instr::New(Js::OpCode::LDP, fpOpnd,
+             IR::IndirOpnd::New(spOpnd, fpOffset, TyMachReg, this->m_func),
+             IR::RegOpnd::New(RegLR, TyMachReg, this->m_func), this->m_func);
+         exitInstr->InsertBefore(instrLdp);
++#endif
+     }
+ 
+     // Restore callee-saved registers
+@@ -1450,11 +1538,27 @@ IR::Instr * LowererMD::LowerExitInstr(IR::ExitInstr * exitInstr)
+             {
+                 curOffset -= 2 * MachRegInt;
+                 RegNum nextReg = RegNum(curReg + 1);
++#ifdef APPLE_SILICON_JIT
++                // Apple Silicon: Use individual LDR instructions instead of LDP
++                IR::RegOpnd* reg1 = IR::RegOpnd::New(curReg, TyMachReg, this->m_func);
++                IR::RegOpnd* reg2 = IR::RegOpnd::New(nextReg, TyMachReg, this->m_func);
++                IR::IndirOpnd* stackLoc = IR::IndirOpnd::New(spOpnd, curOffset, TyMachReg, this->m_func);
++                
++                AppleSiliconStackManager::EmitLoadPair_Individual(
++                    exitInstr, reg1, reg2, stackLoc, this->m_func);
++                    
++                APPLE_SILICON_DEBUG_LOG("Converted LDP to individual LDR in function epilog");
++#else
++                // Standard ARM64: Use efficient LDP instruction
+                 IR::Instr * instrLdp = IR::Instr::New(Js::OpCode::LDP,
+                     IR::RegOpnd::New(curReg, TyMachReg, this->m_func),
+                     IR::IndirOpnd::New(spOpnd, curOffset, TyMachReg, this->m_func),
+                     IR::RegOpnd::New(nextReg, TyMachReg, this->m_func), this->m_func);
+                 exitInstr->InsertBefore(instrLdp);
++#endif
++                
++#if defined(APPLE_SILICON_JIT) && defined(_DEBUG)
++                AppleSiliconStackManager::LogStackOperation("General register restore (epilog)", nullptr);
++#endif
+             }
+         }
+     }
+@@ -1469,11 +1573,27 @@ IR::Instr * LowererMD::LowerExitInstr(IR::ExitInstr * exitInstr)
+             {
+                 curOffset -= 2 * MachRegDouble;
+                 RegNum nextReg = RegNum(curReg + 1);
++#ifdef APPLE_SILICON_JIT
++                // Apple Silicon: Use individual FLDR instructions instead of FLDP
++                IR::RegOpnd* floatReg1 = IR::RegOpnd::New(curReg, TyMachDouble, this->m_func);
++                IR::RegOpnd* floatReg2 = IR::RegOpnd::New(nextReg, TyMachDouble, this->m_func);
++                IR::IndirOpnd* stackLoc = IR::IndirOpnd::New(spOpnd, curOffset, TyMachReg, this->m_func);
++                
++                AppleSiliconStackManager::EmitFloatLoadPair_Individual(
++                    exitInstr, floatReg1, floatReg2, stackLoc, this->m_func);
++                    
++                APPLE_SILICON_DEBUG_LOG("Converted FLDP to individual FLDR in function epilog");
++#else
++                // Standard ARM64: Use efficient FLDP instruction
+                 IR::Instr * instrLdp = IR::Instr::New(Js::OpCode::FLDP,
+                     IR::RegOpnd::New(curReg, TyMachDouble, this->m_func),
+                     IR::IndirOpnd::New(spOpnd, curOffset, TyMachReg, this->m_func),
+                     IR::RegOpnd::New(nextReg, TyMachDouble, this->m_func), this->m_func);
+                 exitInstr->InsertBefore(instrLdp);
++#endif
++                
++#if defined(APPLE_SILICON_JIT) && defined(_DEBUG)
++                AppleSiliconStackManager::LogStackOperation("Float register restore (epilog)", nullptr);
++#endif
+             }
+         }
+     }
+@@ -1481,6 +1601,16 @@ IR::Instr * LowererMD::LowerExitInstr(IR::ExitInstr * exitInstr)
+     // Restore SP
+     this->GenerateStackDeallocation(exitInstr, stackAllocation2);
+ 
++#if defined(APPLE_SILICON_JIT)
++    // Apple Silicon: Validate that no prohibited instructions were generated
++    if (APPLE_SILICON_VALIDATE_INSTRUCTIONS)
++    {
++        for (IR::Instr* instr = exitInstr->m_prev; instr && instr != entryInstr; instr = instr->m_prev)
++        {
++            AppleSiliconStackManager::ValidateInstruction(instr);
++        }
++    }
++#endif
+     return exitInstr;
+ }
+ 
+@@ -1488,6 +1618,19 @@ void LowererMD::GenerateStackAllocation(IR::Instr * insertInstr, uint32 size, R
+ {
+     if (size > 0)
+     {
++#if defined(APPLE_SILICON_JIT)
++        // Apple Silicon: Ensure stack allocation maintains proper alignment
++        uint32 alignedSize = AppleSiliconStackManager::CalculateAppleSiliconStackAlignment(size);
++        if (alignedSize != size)
++        {
++            APPLE_SILICON_DEBUG_LOG("Adjusted stack allocation for Apple Silicon alignment");
++            size = alignedSize;
++        }
++        
++        // Validate stack size constraints
++        APPLE_SILICON_ASSERT(size <= 65536, "Stack allocation too large for Apple Silicon");
++#endif
++        
+         if (size > 0x1000)
+         {
+             this->GenerateStackProbe(insertInstr, size);

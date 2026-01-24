@@ -1,0 +1,171 @@
+if(CC_TARGETS_AMD64)
+    set (CC_BACKEND_ARCH_FOLDER amd64)
+    set (CC_BACKEND_ARCH_FILES
+        amd64/EncoderMD.cpp
+        amd64/LinearScanMD.cpp
+        amd64/LowererMDArch.cpp
+        amd64/PeepsMD.cpp
+        amd64/PrologEncoderMD.cpp
+        amd64/LinearScanMdA.S
+        amd64/Thunks.S
+        AgenPeeps.cpp
+        EhFrame.cpp
+        LowerMDShared.cpp
+        LowerMDSharedSimd128.cpp
+        PrologEncoder.cpp
+    )
+elseif(CC_TARGETS_X86)
+    set (CC_BACKEND_ARCH_FOLDER i386)
+    set (CC_BACKEND_ARCH_FILES
+        i386/EncoderMD.cpp
+        i386/LinearScanMD.cpp
+        i386/LowererMDArch.cpp
+        i386/PeepsMD.cpp
+        AgenPeeps.cpp
+        LowerMDShared.cpp
+        LowerMDSharedSimd128.cpp
+    )
+elseif(CC_TARGETS_ARM64)
+    set (CC_BACKEND_ARCH_FOLDER arm64)
+    set (CC_BACKEND_ARCH_FILES
+        arm64/ARM64LogicalImmediates.cpp
+        arm64/ARM64UnwindEncoder.cpp
+        arm64/EncoderMD.cpp
+        arm64/LegalizeMD.cpp
+        arm64/LinearScanMD.cpp
+        arm64/LinearScanMdA.S
+        arm64/LowerMD.cpp
+        arm64/PeepsMD.cpp
+        arm64/Thunks.S
+        arm64/UnwindInfoManager.cpp
+    )
+
+    # Apple Silicon JIT support
+    if(CC_APPLE_SILICON)
+        message(STATUS "Adding Apple Silicon JIT files to ARM64 backend")
+        list(APPEND CC_BACKEND_ARCH_FILES
+            arm64/AppleSilicon/AppleSiliconStackMD.cpp
+        )
+        # Include Apple Silicon build configuration
+        include(${CMAKE_CURRENT_SOURCE_DIR}/arm64/AppleSilicon/AppleSiliconBuild.cmake)
+    endif()
+elseif(CC_TARGETS_ARM)
+    set (CC_BACKEND_ARCH_FOLDER arm)
+    set (CC_BACKEND_ARCH_FILES
+        arm/EncoderMD.cpp
+        arm/LegalizeMD.cpp
+        arm/LinearScanMD.cpp
+        arm/LinearScanMdA.asm
+        arm/LowerMD.cpp
+        arm/PeepsMD.cpp
+        arm/Thunks.asm
+        arm/UnwindInfoManager.cpp
+    )
+endif()
+
+add_library (Chakra.Backend OBJECT
+    AsmJsJITInfo.cpp
+    Backend.cpp
+    BackendApi.cpp
+    BackendOpCodeAttrAsmJs.cpp
+    BackwardPass.cpp
+    BailOut.cpp
+    CaseNode.cpp
+    CodeGenAllocators.cpp
+    CodeGenNumberAllocator.cpp
+    CodeGenWorkItem.cpp
+    DbCheckPostLower.cpp
+    Debug.cpp
+    EmitBuffer.cpp
+    Encoder.cpp
+    EquivalentTypeSet.cpp
+    FixedFieldInfo.cpp
+    FlowGraph.cpp
+    Func.cpp
+    FunctionCodeGenJitTimeData.cpp
+    FunctionJITRuntimeInfo.cpp
+    FunctionJITTimeInfo.cpp
+    GlobOpt.cpp
+    GlobOptArrays.cpp
+    GlobOptBailOut.cpp
+    GlobOptBlockData.cpp
+    GlobOptExpr.cpp
+    GlobOptFields.cpp
+    GlobOptIntBounds.cpp
+    IR.cpp
+    IRBuilder.cpp
+    IRBuilderAsmJs.cpp
+    IRType.cpp
+    IRViewer.cpp
+    InductionVariable.cpp
+    Inline.cpp
+    InlineeFrameInfo.cpp
+    InliningDecider.cpp
+    InliningHeuristics.cpp
+    IntBounds.cpp
+    IntConstMath.cpp
+    InterpreterThunkEmitter.cpp
+    JavascriptNativeOperators.cpp
+    JITThunkEmitter.cpp
+    JITOutput.cpp
+    JitAsmTrace.cpp
+    JitAsmTraceIntegration.cpp
+    JITTimeConstructorCache.cpp
+    JITTimeFunctionBody.cpp
+    JITTimePolymorphicInlineCache.cpp
+    JITTimePolymorphicInlineCacheInfo.cpp
+    JITTimeProfileInfo.cpp
+    JITTimeWorkItem.cpp
+    JitTransferData.cpp
+    JITType.cpp
+    JITTypeHandler.cpp
+    JnHelperMethod.cpp
+    LinearScan.cpp
+    Lower.cpp
+    NativeCodeData.cpp
+    NativeCodeGenerator.cpp
+    NativeEntryPointData.cpp
+    ObjTypeSpecFldInfo.cpp
+    Opnd.cpp
+    PDataManager.cpp
+    PageAllocatorPool.cpp
+    Peeps.cpp
+    PreLowerPeeps.cpp
+    QueuedFullJitWorkItem.cpp
+    Region.cpp
+    SccLiveness.cpp
+    Security.cpp
+    ServerScriptContext.cpp
+    ServerThreadContext.cpp
+    SimpleJitProfilingHelpers.cpp
+    SimpleLayout.cpp
+    SwitchIRBuilder.cpp
+    Sym.cpp
+    SymTable.cpp
+    TempTracker.cpp
+    ValueInfo.cpp
+    ValueRelativeOffset.cpp
+    ${CC_BACKEND_ARCH_FILES}
+    )
+
+# Link with Capstone if available for JIT tracing
+if(CAPSTONE_AVAILABLE)
+    target_link_libraries(Chakra.Backend PUBLIC capstone)
+    target_include_directories(Chakra.Backend PUBLIC
+        ${CMAKE_CURRENT_SOURCE_DIR}/../../deps/capstone/include
+    )
+    target_compile_definitions(Chakra.Backend PUBLIC ENABLE_CAPSTONE_DISASM=1)
+endif()
+
+target_include_directories (
+    Chakra.Backend PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}
+    ${CC_BACKEND_ARCH_FOLDER}
+    ../Common
+    ../JITIDL
+    # Apple Silicon specific includes
+    $<$<BOOL:${CC_APPLE_SILICON}>:${CMAKE_CURRENT_SOURCE_DIR}/${CC_BACKEND_ARCH_FOLDER}/AppleSilicon>
+    ../Runtime
+    ../Runtime/ByteCode
+    ../Runtime/Math
+    ../Parser
+    )
