@@ -1,0 +1,62 @@
+# x64 Research Debugging Script
+# Purpose: Understand how the WORKING x64 implementation handles JIT→INT calls
+# Usage: lldb ./dist/chjitx64/ch
+#        (lldb) command source examination/research_x64.lldb
+
+echo \n=== x64 Research Session ===\n
+echo Goal: Understand the working JIT→INT mechanism\n
+echo \n
+
+# Configure LLDB for better output
+settings set target.x86-disassembly-flavor intel
+settings set stop-disassembly-count 30
+
+# Breakpoint 1: InterpreterHelper - where JIT transitions to interpreter
+echo Setting breakpoint at InterpreterHelper...\n
+breakpoint set -n "Js::InterpreterStackFrame::InterpreterHelper"
+
+# Add commands to execute when breakpoint hits
+breakpoint command add 1
+echo \n========================================
+echo BREAKPOINT: InterpreterHelper Entry
+echo ========================================\n
+echo --- Register State (x64 calling convention) ---
+register read rdi rsi rdx rcx r8 r9 rax rbx rbp rsp
+echo \n--- Stack Pointer and Frame ---
+memory read -f x -c 16 $rsp
+echo \n--- Disassembly at current location ---
+disassemble -c 20
+echo \n--- Backtrace (how did we get here?) ---
+bt 8
+echo \n========================================
+echo Press 'c' to continue, or examine further
+echo ========================================\n
+DONE
+
+# Breakpoint 2: Try to catch thunk generation
+echo Setting breakpoint at thunk generation...\n
+breakpoint set -r "InterpreterThunkEmitter.*Encode"
+
+breakpoint command add 2
+echo \n--- Thunk Generation ---
+echo Captured thunk generation event
+register read
+disassemble -c 20
+echo \nContinuing...\n
+continue
+DONE
+
+echo \n=== Breakpoints Set ===
+echo 1. InterpreterHelper - Main observation point
+echo 2. Thunk generation - Capture thunk creation
+echo \n
+echo === Instructions ===
+echo 1. Type: run examination/test_jit_to_int.js
+echo 2. When InterpreterHelper breakpoint hits, examine:
+echo    - RDI should be function object pointer
+echo    - RSI should be CallInfo
+echo    - Stack should show parameters
+echo 3. Record what you see!
+echo \n
+echo Ready to start research session.
+echo \n
