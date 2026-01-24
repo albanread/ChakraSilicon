@@ -839,6 +839,50 @@ Currently, the only workaround is:
 - [GCC ARM64](https://github.com/gcc-mirror/gcc/tree/master/gcc/config/aarch64) - Prolog generation
 - [libunwind documentation](https://github.com/libunwind/libunwind) - Unwinding internals
 
+---
+
+## Additional Research: Calling Convention Issues
+
+### Interpreter → JIT Call Convention (RESEARCH FINDING)
+
+**Source:** External investigation of macOS ARM64 calling issues
+
+**Problem Identified:**
+The `CALL_ENTRYPOINT_NOASSERT` macro in `lib/Runtime/Language/Arguments.h` was found to be broken for macOS ARM64, causing interpreter→JIT calls to fail.
+
+**Research Finding:**
+
+```cpp
+// BROKEN (original code):
+#define CALL_ENTRYPOINT_NOASSERT(entryPoint, function, callInfo, ...) \
+    entryPoint(function, callInfo, function, callInfo, ##__VA_ARGS__)
+
+// PROPOSED FIX (from research):
+#define CALL_ENTRYPOINT_NOASSERT(entryPoint, function, callInfo, ...) \
+    entryPoint(function, callInfo, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, \
+               function, callInfo, ##__VA_ARGS__)
+```
+
+**Rationale:**
+- The JIT expects varargs to start at the homed X2 position `[sp+0x80]`
+- Filling X2-X7 with nulls forces `function`/`callInfo` to be duplicated on the stack
+- This ensures the JIT can load `InterpreterStackFrame*` from the correct stack position
+- Uses same approach as Linux ARM64 (AAPCS64 calling convention)
+
+**Status:** ❌ NOT VERIFIED - Research finding only, not tested in this repository
+
+**Location (if implementing):**
+- File: `ChakraCore/lib/Runtime/Language/Arguments.h`
+- Lines: Approximately 95-105
+- Affected macro: `CALL_ENTRYPOINT_NOASSERT`
+
+**Related Issues:**
+- This fix may be required for proper interpreter-to-JIT transitions
+- Related to ARM64 parameter passing and stack frame layout
+- Part of the broader calling convention issues on Apple Silicon
+
+**Note:** This is a research finding from external investigation. The actual implementation and verification of this fix is outside the scope of this document and needs to be validated through testing.
+
 ### Tools
 
 - `llvm-dwarfdump` - Inspect DWARF information
