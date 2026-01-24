@@ -1,5 +1,9 @@
 # ChakraSilicon
 
+> **⚠️ WORK IN PROGRESS - NOT READY FOR PRODUCTION USE ⚠️**
+> 
+> This project is under active development. Build scripts and functionality are being tested and validated.
+
 **ChakraCore builds for Apple Silicon (arm64) and Intel x86_64 with proper JIT support**
 
 This repository contains ChakraCore source code (previously a submodule, now fully integrated) along with build scripts to create multiple target variants for macOS and Linux.
