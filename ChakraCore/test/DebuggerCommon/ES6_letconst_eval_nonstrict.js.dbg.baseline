@@ -1,0 +1,12 @@
+[
+  {
+    "this": {
+      "Symbol.toStringTag": "string global"
+    },
+    "locals": {
+      "a": "number 1",
+      "Symbol.toStringTag": "string global"
+    },
+    "globals": {}
+  }
+]

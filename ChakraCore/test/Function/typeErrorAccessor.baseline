@@ -1,0 +1,15 @@
+***************** getter ***************** 
+length = 0
+object, undefined, undefined, true
+value:0, writable:false, enumerable:false, configurable:true, get:false, set:false
+***************** g.caller ***************** 
+object, function, function, true
+value:undefined, writable:undefined, enumerable:false, configurable:true, get:true, set:true
+***************** g.arguments ***************** 
+object, function, function, true
+value:undefined, writable:undefined, enumerable:false, configurable:true, get:true, set:true
+***************** try to set/get the caller/arguments *****************
+Set caller passed
+Get caller passed
+Set arguments passed
+Get arguments passed

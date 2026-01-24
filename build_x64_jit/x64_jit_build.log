@@ -1,0 +1,5 @@
+ChakraCore x64 JIT Build Log - Fri Jan 23 22:07:32 GMT 2026
+[SUCCESS] cmake found: /usr/local/bin/cmake (cmake version 4.2.1)
+[SUCCESS] make found: /usr/bin/make (GNU Make 3.81)
+[SUCCESS] gcc found: /usr/bin/gcc (Apple clang version 17.0.0 (clang-1700.6.3.2))
+[INFO] CMake version: 4.2.1

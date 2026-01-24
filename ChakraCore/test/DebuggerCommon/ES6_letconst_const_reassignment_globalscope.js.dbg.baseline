@@ -1,0 +1,18 @@
+[
+  {
+    "this": {
+      "Symbol.toStringTag": "string global"
+    },
+    "locals": {
+      "a": "number 1",
+      "b": "number 2",
+      "Symbol.toStringTag": "string global"
+    },
+    "globals": {}
+  },
+  {
+    "evaluate": {
+      "b++": "Error <large string>"
+    }
+  }
+]

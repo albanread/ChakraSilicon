@@ -1,0 +1,74 @@
+[
+  {
+    "evaluate": {
+      "eval(\"x0==0;\");": "boolean true"
+    }
+  },
+  {
+    "sources": [
+      {
+        "fileName": "parentedDynamicCode3.js",
+        "lineCount": 18,
+        "sourceLength": 750,
+        "scriptId": 1
+      },
+      {
+        "scriptType": "eval code",
+        "lineCount": 1,
+        "sourceLength": 11,
+        "scriptId": 2,
+        "parentScriptId": 1
+      },
+      {
+        "scriptType": "eval code",
+        "lineCount": 1,
+        "sourceLength": 11,
+        "scriptId": 5,
+        "parentScriptId": 1
+      }
+    ]
+  },
+  {
+    "evaluate": {
+      "eval(\"x0==0;\");": "boolean true"
+    }
+  },
+  {
+    "sources": [
+      {
+        "fileName": "parentedDynamicCode3.js",
+        "lineCount": 18,
+        "sourceLength": 750,
+        "scriptId": 1
+      },
+      {
+        "scriptType": "eval code",
+        "lineCount": 1,
+        "sourceLength": 11,
+        "scriptId": 2,
+        "parentScriptId": 1
+      },
+      {
+        "scriptType": "eval code",
+        "lineCount": 1,
+        "sourceLength": 11,
+        "scriptId": 5,
+        "parentScriptId": 1
+      },
+      {
+        "scriptType": "eval code",
+        "lineCount": 1,
+        "sourceLength": 11,
+        "scriptId": 10,
+        "parentScriptId": 1
+      },
+      {
+        "scriptType": "eval code",
+        "lineCount": 1,
+        "sourceLength": 11,
+        "scriptId": 11,
+        "parentScriptId": 1
+      }
+    ]
+  }
+]

@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="utf-8"?>
+<regress-exe>
+  <test>
+    <default>
+      <files>neg.js</files>
+      <baseline>neg.baseline</baseline>
+    </default>
+  </test>
+  <test>
+    <default>
+      <files>min.js</files>
+      <baseline>min.baseline</baseline>
+    </default>
+  </test>
+  <test>
+    <default>
+      <files>max.js</files>
+      <baseline>max.baseline</baseline>
+    </default>
+  </test>
+  <test>
+    <default>
+      <files>miscellaneous.js</files>
+      <baseline>miscellaneous.baseline</baseline>
+    </default>
+  </test>
+  <test>
+    <default>
+      <files>basics.js</files>
+      <compile-flags>-args summary -endargs</compile-flags>
+    </default>
+  </test>
+  <test>
+    <default>
+      <files>basics.js</files>
+      <compile-flags>-sse:3 -args summary -endargs</compile-flags>
+    </default>
+  </test>
+  <test>
+    <default>
+      <files>clz32.js</files>
+      <baseline>clz32.baseline</baseline>
+    </default>
+  </test>
+  <test>
+    <default>
+      <files>max2.js</files>
+    </default>
+  </test>
+  <test>
+    <default>
+      <files>max2.js</files>
+      <compile-flags>-JsBuiltin-</compile-flags>
+    </default>
+  </test>
+</regress-exe>

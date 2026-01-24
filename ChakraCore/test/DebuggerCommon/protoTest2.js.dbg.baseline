@@ -1,0 +1,90 @@
+[
+  {
+    "this": {
+      "thisp": "number 1"
+    },
+    "locals": {
+      "arguments": "object null"
+    },
+    "globals": {
+      "Symbol.toStringTag": "string global"
+    }
+  },
+  {
+    "this": {
+      "thisp": "number 1"
+    },
+    "locals": {
+      "arguments": "object null"
+    },
+    "globals": {
+      "Symbol.toStringTag": "string global"
+    }
+  },
+  {
+    "this": {
+      "thisp": "number 1"
+    },
+    "locals": {
+      "arguments": "object null"
+    },
+    "globals": {
+      "Symbol.toStringTag": "string global"
+    }
+  },
+  {
+    "this": {
+      "thisp": "number 1"
+    },
+    "locals": {
+      "arguments": "object null"
+    },
+    "globals": {
+      "Symbol.toStringTag": "string global"
+    }
+  },
+  {
+    "this": {
+      "thisp": "number 1"
+    },
+    "locals": {
+      "arguments": "object null"
+    },
+    "globals": {
+      "Symbol.toStringTag": "string global"
+    }
+  },
+  {
+    "this": {
+      "thisp": "number 1"
+    },
+    "locals": {
+      "arguments": "object null"
+    },
+    "globals": {
+      "Symbol.toStringTag": "string global"
+    }
+  },
+  {
+    "this": {
+      "thisp": "number 1"
+    },
+    "locals": {
+      "arguments": "object null"
+    },
+    "globals": {
+      "Symbol.toStringTag": "string global"
+    }
+  },
+  {
+    "this": {
+      "thisp": "number 1"
+    },
+    "locals": {
+      "arguments": "object null"
+    },
+    "globals": {
+      "Symbol.toStringTag": "string global"
+    }
+  }
+]

@@ -1,0 +1,78 @@
+[
+  {
+    "sources": [
+      {
+        "fileName": "parentedDynamicCode2.js",
+        "lineCount": 22,
+        "sourceLength": 756,
+        "scriptId": 1
+      },
+      {
+        "scriptType": "eval code",
+        "lineCount": 1,
+        "sourceLength": 11,
+        "scriptId": 3,
+        "parentScriptId": 1
+      },
+      {
+        "scriptType": "eval code",
+        "lineCount": 1,
+        "sourceLength": 11,
+        "scriptId": 6,
+        "parentScriptId": 1
+      }
+    ]
+  },
+  {
+    "sources": [
+      {
+        "fileName": "parentedDynamicCode2.js",
+        "lineCount": 22,
+        "sourceLength": 756,
+        "scriptId": 1
+      },
+      {
+        "scriptType": "eval code",
+        "lineCount": 1,
+        "sourceLength": 11,
+        "scriptId": 3,
+        "parentScriptId": 1
+      },
+      {
+        "scriptType": "eval code",
+        "lineCount": 1,
+        "sourceLength": 11,
+        "scriptId": 6,
+        "parentScriptId": 1
+      },
+      {
+        "scriptType": "eval code",
+        "lineCount": 1,
+        "sourceLength": 11,
+        "scriptId": 8,
+        "parentScriptId": 1
+      },
+      {
+        "scriptType": "eval code",
+        "lineCount": 1,
+        "sourceLength": 10,
+        "scriptId": 9,
+        "parentScriptId": 1
+      },
+      {
+        "scriptType": "Function code",
+        "lineCount": 3,
+        "sourceLength": 25,
+        "scriptId": 10,
+        "parentScriptId": 1
+      },
+      {
+        "scriptType": "eval code",
+        "lineCount": 1,
+        "sourceLength": 11,
+        "scriptId": 11,
+        "parentScriptId": 1
+      }
+    ]
+  }
+]

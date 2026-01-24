@@ -1,0 +1,166 @@
+[1/658] Building CXX object pal/src/CMakeFiles/Chakra.Pal.dir/cruntime/runtime_proxy.cpp.o
+[2/658] Building C object pal/src/CMakeFiles/Chakra.Pal.dir/safecrt/makepath_s.c.o
+[3/658] Building C object pal/src/CMakeFiles/Chakra.Pal.dir/safecrt/memcpy_s.c.o
+[4/658] Building C object pal/src/CMakeFiles/Chakra.Pal.dir/safecrt/memmove_s.c.o
+[5/658] Building C object pal/src/CMakeFiles/Chakra.Pal.dir/safecrt/sprintf.c.o
+[6/658] Building C object pal/src/CMakeFiles/Chakra.Pal.dir/safecrt/sscanf.c.o
+[7/658] Building C object pal/src/CMakeFiles/Chakra.Pal.dir/safecrt/strcat_s.c.o
+[8/658] Building C object pal/src/CMakeFiles/Chakra.Pal.dir/safecrt/strcpy_s.c.o
+[9/658] Building C object pal/src/CMakeFiles/Chakra.Pal.dir/safecrt/strncat_s.c.o
+[10/658] Building C object pal/src/CMakeFiles/Chakra.Pal.dir/safecrt/strncpy_s.c.o
+[11/658] Building C object pal/src/CMakeFiles/Chakra.Pal.dir/safecrt/mbusafecrt.c.o
+[12/658] Building C object pal/src/CMakeFiles/Chakra.Pal.dir/safecrt/swprintf.c.o
+[13/658] Building C object pal/src/CMakeFiles/Chakra.Pal.dir/safecrt/vsprintf.c.o
+[14/658] Building C object pal/src/CMakeFiles/Chakra.Pal.dir/safecrt/safecrt_output_s.c.o
+[15/658] Building C object pal/src/CMakeFiles/Chakra.Pal.dir/safecrt/safecrt_woutput_s.c.o
+[16/658] Building C object pal/src/CMakeFiles/Chakra.Pal.dir/safecrt/vswprint.c.o
+[17/658] Building C object pal/src/CMakeFiles/Chakra.Pal.dir/safecrt/wcscpy_s.c.o
+[18/658] Building C object pal/src/CMakeFiles/Chakra.Pal.dir/safecrt/safecrt_input_s.c.o
+[19/658] Building C object pal/src/CMakeFiles/Chakra.Pal.dir/safecrt/safecrt_winput_s.c.o
+[20/658] Building C object pal/src/CMakeFiles/Chakra.Pal.dir/safecrt/wcsncpy_s.c.o
+[21/658] Building CXX object pal/src/CMakeFiles/Chakra.Pal.dir/cruntime/thread.cpp.o
+[22/658] Building CXX object pal/src/CMakeFiles/Chakra.Pal.dir/cruntime/finite.cpp.o
+[23/658] Building CXX object pal/src/CMakeFiles/Chakra.Pal.dir/cruntime/wchartls.cpp.o
+[24/658] Building CXX object pal/src/CMakeFiles/Chakra.Pal.dir/cruntime/lstr.cpp.o
+[25/658] Building CXX object pal/src/CMakeFiles/Chakra.Pal.dir/cruntime/stringtls.cpp.o
+[26/658] Building CXX object pal/src/CMakeFiles/Chakra.Pal.dir/cruntime/mbstring.cpp.o
+[27/658] Building CXX object pal/src/CMakeFiles/Chakra.Pal.dir/cruntime/malloc.cpp.o
+[28/658] Building CXX object pal/src/CMakeFiles/Chakra.Pal.dir/cruntime/misctls.cpp.o
+[29/658] Building C object pal/src/CMakeFiles/Chakra.Pal.dir/safecrt/xtoa_s.c.o
+[30/658] Building CXX object pal/src/CMakeFiles/Chakra.Pal.dir/cruntime/filecrt.cpp.o
+[31/658] Building C object pal/src/CMakeFiles/Chakra.Pal.dir/safecrt/xtow_s.c.o
+[32/658] Building CXX object pal/src/CMakeFiles/Chakra.Pal.dir/cruntime/path.cpp.o
+[33/658] Building CXX object pal/src/CMakeFiles/Chakra.Pal.dir/cruntime/misc.cpp.o
+[34/658] Building CXX object pal/src/CMakeFiles/Chakra.Pal.dir/cruntime/file.cpp.o
+[35/658] Building CXX object pal/src/CMakeFiles/Chakra.Pal.dir/cruntime/string.cpp.o
+[36/658] Building CXX object pal/src/CMakeFiles/Chakra.Pal.dir/cruntime/silent_printf.cpp.o
+[37/658] Building CXX object pal/src/CMakeFiles/Chakra.Pal.dir/cruntime/wchar.cpp.o
+[38/658] Building CXX object pal/src/CMakeFiles/Chakra.Pal.dir/cruntime/printf.cpp.o
+[39/658] Building CXX object pal/src/CMakeFiles/Chakra.Pal.dir/cruntime/printfcpp.cpp.o
+[40/658] Building CXX object pal/src/CMakeFiles/Chakra.Pal.dir/exception/seh.cpp.o
+[41/658] Building CXX object pal/src/CMakeFiles/Chakra.Pal.dir/exception/signal.cpp.o
+[42/658] Building CXX object pal/src/CMakeFiles/Chakra.Pal.dir/debug/debug.cpp.o
+[43/658] Building CXX object pal/src/CMakeFiles/Chakra.Pal.dir/file/directory.cpp.o
+[44/658] Building CXX object pal/src/CMakeFiles/Chakra.Pal.dir/locale/unicode_data.cpp.o
+[45/658] Building CXX object pal/src/CMakeFiles/Chakra.Pal.dir/file/filetime.cpp.o
+[46/658] Building CXX object pal/src/CMakeFiles/Chakra.Pal.dir/handlemgr/handleapi.cpp.o
+[47/658] Building CXX object pal/src/CMakeFiles/Chakra.Pal.dir/loader/modulename.cpp.o
+[48/658] Building CXX object pal/src/CMakeFiles/Chakra.Pal.dir/handlemgr/handlemgr.cpp.o
+[49/658] Building CXX object pal/src/CMakeFiles/Chakra.Pal.dir/init/sxs.cpp.o
+[50/658] Building CXX object pal/src/CMakeFiles/Chakra.Pal.dir/map/common.cpp.o
+[51/658] Building CXX object pal/src/CMakeFiles/Chakra.Pal.dir/locale/utf8.cpp.o
+[52/658] Building CXX object pal/src/CMakeFiles/Chakra.Pal.dir/locale/unicode.cpp.o
+[53/658] Building CXX object pal/src/CMakeFiles/Chakra.Pal.dir/init/pal.cpp.o
+[54/658] Building CXX object pal/src/CMakeFiles/Chakra.Pal.dir/misc/random.cpp.o
+[55/658] Building CXX object pal/src/CMakeFiles/Chakra.Pal.dir/file/pal_path.cpp.o
+[56/658] Building CXX object pal/src/CMakeFiles/Chakra.Pal.dir/loader/module.cpp.o
+[57/658] Building CXX object pal/src/CMakeFiles/Chakra.Pal.dir/memory/local.cpp.o
+[58/658] Building CXX object pal/src/CMakeFiles/Chakra.Pal.dir/memory/heap.cpp.o
+[59/658] Building CXX object pal/src/CMakeFiles/Chakra.Pal.dir/file/shmfilelockmgr.cpp.o
+[60/658] Building CXX object pal/src/CMakeFiles/Chakra.Pal.dir/map/map.cpp.o
+[61/658] Building CXX object pal/src/CMakeFiles/Chakra.Pal.dir/misc/bstr.cpp.o
+[62/658] Building CXX object pal/src/CMakeFiles/Chakra.Pal.dir/sync/cclock.cpp.o
+[63/658] Building CXX object pal/src/CMakeFiles/Chakra.Pal.dir/map/virtual.cpp.o
+[64/658] Building CXX object pal/src/CMakeFiles/Chakra.Pal.dir/file/pal_file.cpp.o
+[65/658] Building CXX object pal/src/CMakeFiles/Chakra.Pal.dir/misc/dbgmsg.cpp.o
+[66/658] Building ASM object pal/src/CMakeFiles/Chakra.Pal.dir/arch/i386/dispatchexceptionwrapper.S.o
+[67/658] Building CXX object pal/src/CMakeFiles/Chakra.Pal.dir/misc/error.cpp.o
+[68/658] Building CXX object pal/src/CMakeFiles/Chakra.Pal.dir/misc/environ.cpp.o
+[69/658] Building ASM object pal/src/CMakeFiles/Chakra.Pal.dir/arch/i386/debugbreak.S.o
+[70/658] Building ASM object pal/src/CMakeFiles/Chakra.Pal.dir/arch/i386/context2.S.o
+[71/658] Building CXX object pal/src/CMakeFiles/Chakra.Pal.dir/misc/strutil.cpp.o
+[72/658] Building CXX object pal/src/CMakeFiles/Chakra.Pal.dir/misc/time.cpp.o
+[73/658] Building CXX object pal/src/CMakeFiles/Chakra.Pal.dir/misc/sysinfo.cpp.o
+[74/658] Building CXX object pal/src/CMakeFiles/Chakra.Pal.dir/misc/utils.cpp.o
+[75/658] Building CXX object pal/src/CMakeFiles/Chakra.Pal.dir/objmgr/palobjbase.cpp.o
+[76/658] Building CXX object lib/CMakeFiles/ChakraCoreStatic.dir/ChakraCoreStatic.cpp.o
+[77/658] Building ASM object pal/src/CMakeFiles/Chakra.Pal.dir/arch/i386/asmhelpers.S.o
+[78/658] Building CXX object pal/src/CMakeFiles/Chakra.Pal.dir/synchobj/event.cpp.o
+[79/658] Building CXX object pal/src/CMakeFiles/Chakra.Pal.dir/synchobj/mutex.cpp.o
+[80/658] Building CXX object pal/src/CMakeFiles/Chakra.Pal.dir/synchobj/semaphore.cpp.o
+[81/658] Building CXX object pal/src/CMakeFiles/Chakra.Pal.dir/objmgr/shmobject.cpp.o
+[82/658] Building CXX object pal/src/CMakeFiles/Chakra.Pal.dir/objmgr/shmobjectmanager.cpp.o
+[83/658] Building CXX object pal/src/CMakeFiles/Chakra.Pal.dir/shmemory/shmemory.cpp.o
+[84/658] Building CXX object pal/src/CMakeFiles/Chakra.Pal.dir/synchmgr/wait.cpp.o
+[85/658] Building CXX object pal/src/CMakeFiles/Chakra.Pal.dir/sync/cs.cpp.o
+[86/658] Building CXX object pal/src/CMakeFiles/Chakra.Pal.dir/thread/context.cpp.o
+[87/658] Building CXX object pal/src/CMakeFiles/Chakra.Pal.dir/thread/threadsusp.cpp.o
+[88/658] Building CXX object pal/src/CMakeFiles/Chakra.Pal.dir/synchmgr/synchcontrollers.cpp.o
+[89/658] Building CXX object pal/src/CMakeFiles/Chakra.Pal.dir/exception/machexception.cpp.o
+[90/658] Building CXX object pal/src/CMakeFiles/Chakra.Pal.dir/thread/pal_thread.cpp.o
+[91/658] Building CXX object pal/src/CMakeFiles/Chakra.Pal.dir/thread/process.cpp.o
+[92/658] Building CXX object pal/src/CMakeFiles/Chakra.Pal.dir/exception/machmessage.cpp.o
+[93/658] Building CXX object pal/src/CMakeFiles/Chakra.Pal.dir/arch/i386/processor.cpp.o
+[94/658] Building CXX object pal/src/CMakeFiles/Chakra.Pal.dir/synchmgr/synchmanager.cpp.o
+[95/658] Building CXX object lib/Backend/CMakeFiles/Chakra.Backend.dir/CodeGenNumberAllocator.cpp.o
+[96/658] Building CXX object lib/Backend/CMakeFiles/Chakra.Backend.dir/DbCheckPostLower.cpp.o
+[97/658] Building CXX object lib/Backend/CMakeFiles/Chakra.Backend.dir/AsmJsJITInfo.cpp.o
+[98/658] Building CXX object lib/Backend/CMakeFiles/Chakra.Backend.dir/Backend.cpp.o
+[99/658] Building CXX object lib/Backend/CMakeFiles/Chakra.Backend.dir/CaseNode.cpp.o
+[100/658] Building CXX object lib/Backend/CMakeFiles/Chakra.Backend.dir/BackendApi.cpp.o
+[101/658] Building CXX object lib/Backend/CMakeFiles/Chakra.Backend.dir/BackendOpCodeAttrAsmJs.cpp.o
+[102/658] Building CXX object lib/Backend/CMakeFiles/Chakra.Backend.dir/CodeGenAllocators.cpp.o
+[103/658] Building CXX object lib/Backend/CMakeFiles/Chakra.Backend.dir/CodeGenWorkItem.cpp.o
+[104/658] Building CXX object lib/Backend/CMakeFiles/Chakra.Backend.dir/Debug.cpp.o
+[105/658] Building CXX object lib/Backend/CMakeFiles/Chakra.Backend.dir/FixedFieldInfo.cpp.o
+[106/658] Building CXX object lib/Backend/CMakeFiles/Chakra.Backend.dir/EquivalentTypeSet.cpp.o
+[107/658] Building CXX object lib/Backend/CMakeFiles/Chakra.Backend.dir/EmitBuffer.cpp.o
+[108/658] Building CXX object lib/Backend/CMakeFiles/Chakra.Backend.dir/FunctionJITRuntimeInfo.cpp.o
+[109/658] Building CXX object lib/Backend/CMakeFiles/Chakra.Backend.dir/FunctionCodeGenJitTimeData.cpp.o
+[110/658] Building CXX object lib/Backend/CMakeFiles/Chakra.Backend.dir/FunctionJITTimeInfo.cpp.o
+[111/658] Building CXX object lib/Backend/CMakeFiles/Chakra.Backend.dir/BailOut.cpp.o
+[112/658] Building CXX object lib/Backend/CMakeFiles/Chakra.Backend.dir/Encoder.cpp.o
+[113/658] Building CXX object lib/Backend/CMakeFiles/Chakra.Backend.dir/GlobOptArrays.cpp.o
+[114/658] Building CXX object lib/Backend/CMakeFiles/Chakra.Backend.dir/Func.cpp.o
+[115/658] Building CXX object lib/Backend/CMakeFiles/Chakra.Backend.dir/GlobOptBailOut.cpp.o
+[116/658] Building CXX object lib/Backend/CMakeFiles/Chakra.Backend.dir/FlowGraph.cpp.o
+[117/658] Building CXX object lib/Backend/CMakeFiles/Chakra.Backend.dir/BackwardPass.cpp.o
+[118/658] Building CXX object lib/Backend/CMakeFiles/Chakra.Backend.dir/JITOutput.cpp.o
+FAILED: [code=1] lib/Backend/CMakeFiles/Chakra.Backend.dir/JITOutput.cpp.o 
+/usr/bin/c++ -DBIT64=1 -DCLANG_HAS_DISABLE_TAIL_CALLS=1 -DFEATURE_PAL -DHAS_ICU -DHAS_REAL_ICU=1 -DINTL_ICU=1 -DNO_PAL_MINMAX -DPAL_STDCPP_COMPAT -DPLATFORM_UNIX -DPLATFORM_UNIX=1 -DSTACK_ALIGN=16 -DTARGET_64 -DUNICODE -D_AMD64_ -D_CHAKRACOREBUILD -D_M_AMD64 -D_M_X64 -D_SAFECRT_USE_CPP_OVERLOADS=1 -D__STDC_WANT_LIB_EXT1__=1 -I/Volumes/S/chakra/ChakraCore/. -I/Volumes/S/chakra/ChakraCore/lib/Common -I/Volumes/S/chakra/ChakraCore/lib/Common/PlaceHolder -I/Volumes/S/chakra/ChakraCore/pal -I/Volumes/S/chakra/ChakraCore/pal/inc -I/Volumes/S/chakra/ChakraCore/pal/inc/rt -I/usr/local/opt/icu4c@78/include -I/usr/local/opt/icu4c@78/include/../i18n -I/Volumes/S/chakra/ChakraCore/lib/Backend -I/Volumes/S/chakra/ChakraCore/lib/Backend/amd64 -I/Volumes/S/chakra/ChakraCore/lib/Backend/../Common -I/Volumes/S/chakra/ChakraCore/lib/Backend/../JITIDL -I/Volumes/S/chakra/ChakraCore/lib/Backend/../Runtime -I/Volumes/S/chakra/ChakraCore/lib/Backend/../Runtime/ByteCode -I/Volumes/S/chakra/ChakraCore/lib/Backend/../Runtime/Math -I/Volumes/S/chakra/ChakraCore/lib/Backend/../Parser -mmacosx-version-min=10.9 -std=gnu++11         -Wno-ignored-attributes        -Wno-parentheses-equality        -Wno-reorder        -Wno-microsoft        -Wno-unused-value        -Wno-int-to-void-pointer-cast        -Wno-invalid-offsetof        -Wno-undefined-inline        -Wno-inconsistent-missing-override        -Wno-macro-redefined        -Wno-pragmas        -Wno-invalid-token-paste        -Wno-format        -Wno-invalid-noreturn        -Wno-null-arithmetic        -Wno-tautological-constant-out-of-range-compare        -Wno-tautological-undefined-compare        -Wno-address-of-temporary        -Wno-null-conversion        -Wno-return-type        -Wno-switch        -Wno-int-to-pointer-cast        -Wno-tautological-constant-compare        -Wno-enum-compare-switch        -Wno-unknown-warning-option         -Werror         -Wno-error                  -fno-omit-frame-pointer         -fdelayed-template-parsing -O3 -DNDEBUG -std=gnu++17   -fdiagnostics-color=always -msse4.2 -mmacosx-version-min=10.9 -fasm-blocks -fms-extensions -fwrapv -fPIC -MD -MT lib/Backend/CMakeFiles/Chakra.Backend.dir/JITOutput.cpp.o -MF lib/Backend/CMakeFiles/Chakra.Backend.dir/JITOutput.cpp.o.d -o lib/Backend/CMakeFiles/Chakra.Backend.dir/JITOutput.cpp.o -c /Volumes/S/chakra/ChakraCore/lib/Backend/JITOutput.cpp
+In file included from /Volumes/S/chakra/ChakraCore/lib/Backend/JITOutput.cpp:9:
+/Volumes/S/chakra/ChakraCore/lib/Backend/JitAsmTrace.h:76:35: error: unknown type name 'cs_insn'
+   76 |     void AnalyzeInstruction(const cs_insn* insn, InstructionInfo& info);
+      |                                   ^
+1 error generated.
+[119/658] Building CXX object lib/Backend/CMakeFiles/Chakra.Backend.dir/JitAsmTrace.cpp.o
+FAILED: [code=1] lib/Backend/CMakeFiles/Chakra.Backend.dir/JitAsmTrace.cpp.o 
+/usr/bin/c++ -DBIT64=1 -DCLANG_HAS_DISABLE_TAIL_CALLS=1 -DFEATURE_PAL -DHAS_ICU -DHAS_REAL_ICU=1 -DINTL_ICU=1 -DNO_PAL_MINMAX -DPAL_STDCPP_COMPAT -DPLATFORM_UNIX -DPLATFORM_UNIX=1 -DSTACK_ALIGN=16 -DTARGET_64 -DUNICODE -D_AMD64_ -D_CHAKRACOREBUILD -D_M_AMD64 -D_M_X64 -D_SAFECRT_USE_CPP_OVERLOADS=1 -D__STDC_WANT_LIB_EXT1__=1 -I/Volumes/S/chakra/ChakraCore/. -I/Volumes/S/chakra/ChakraCore/lib/Common -I/Volumes/S/chakra/ChakraCore/lib/Common/PlaceHolder -I/Volumes/S/chakra/ChakraCore/pal -I/Volumes/S/chakra/ChakraCore/pal/inc -I/Volumes/S/chakra/ChakraCore/pal/inc/rt -I/usr/local/opt/icu4c@78/include -I/usr/local/opt/icu4c@78/include/../i18n -I/Volumes/S/chakra/ChakraCore/lib/Backend -I/Volumes/S/chakra/ChakraCore/lib/Backend/amd64 -I/Volumes/S/chakra/ChakraCore/lib/Backend/../Common -I/Volumes/S/chakra/ChakraCore/lib/Backend/../JITIDL -I/Volumes/S/chakra/ChakraCore/lib/Backend/../Runtime -I/Volumes/S/chakra/ChakraCore/lib/Backend/../Runtime/ByteCode -I/Volumes/S/chakra/ChakraCore/lib/Backend/../Runtime/Math -I/Volumes/S/chakra/ChakraCore/lib/Backend/../Parser -mmacosx-version-min=10.9 -std=gnu++11         -Wno-ignored-attributes        -Wno-parentheses-equality        -Wno-reorder        -Wno-microsoft        -Wno-unused-value        -Wno-int-to-void-pointer-cast        -Wno-invalid-offsetof        -Wno-undefined-inline        -Wno-inconsistent-missing-override        -Wno-macro-redefined        -Wno-pragmas        -Wno-invalid-token-paste        -Wno-format        -Wno-invalid-noreturn        -Wno-null-arithmetic        -Wno-tautological-constant-out-of-range-compare        -Wno-tautological-undefined-compare        -Wno-address-of-temporary        -Wno-null-conversion        -Wno-return-type        -Wno-switch        -Wno-int-to-pointer-cast        -Wno-tautological-constant-compare        -Wno-enum-compare-switch        -Wno-unknown-warning-option         -Werror         -Wno-error                  -fno-omit-frame-pointer         -fdelayed-template-parsing -O3 -DNDEBUG -std=gnu++17   -fdiagnostics-color=always -msse4.2 -mmacosx-version-min=10.9 -fasm-blocks -fms-extensions -fwrapv -fPIC -MD -MT lib/Backend/CMakeFiles/Chakra.Backend.dir/JitAsmTrace.cpp.o -MF lib/Backend/CMakeFiles/Chakra.Backend.dir/JitAsmTrace.cpp.o.d -o lib/Backend/CMakeFiles/Chakra.Backend.dir/JitAsmTrace.cpp.o -c /Volumes/S/chakra/ChakraCore/lib/Backend/JitAsmTrace.cpp
+In file included from /Volumes/S/chakra/ChakraCore/lib/Backend/JitAsmTrace.cpp:7:
+/Volumes/S/chakra/ChakraCore/lib/Backend/JitAsmTrace.h:76:35: error: unknown type name 'cs_insn'
+   76 |     void AnalyzeInstruction(const cs_insn* insn, InstructionInfo& info);
+      |                                   ^
+/Volumes/S/chakra/ChakraCore/lib/Backend/JitAsmTrace.cpp:221:45: error: unknown type name 'cs_insn'
+  221 | void JitAsmTracer::AnalyzeInstruction(const cs_insn* insn, InstructionInfo& info)
+      |                                             ^
+2 errors generated.
+[120/658] Building CXX object lib/Backend/CMakeFiles/Chakra.Backend.dir/IRType.cpp.o
+[121/658] Building CXX object lib/Backend/CMakeFiles/Chakra.Backend.dir/IRViewer.cpp.o
+[122/658] Building CXX object lib/Backend/CMakeFiles/Chakra.Backend.dir/InductionVariable.cpp.o
+[123/658] Building CXX object lib/Backend/CMakeFiles/Chakra.Backend.dir/GlobOptExpr.cpp.o
+[124/658] Building CXX object lib/Backend/CMakeFiles/Chakra.Backend.dir/InlineeFrameInfo.cpp.o
+[125/658] Building CXX object lib/Backend/CMakeFiles/Chakra.Backend.dir/InliningDecider.cpp.o
+[126/658] Building CXX object lib/Backend/CMakeFiles/Chakra.Backend.dir/InliningHeuristics.cpp.o
+[127/658] Building CXX object lib/Backend/CMakeFiles/Chakra.Backend.dir/IntConstMath.cpp.o
+[128/658] Building CXX object lib/Backend/CMakeFiles/Chakra.Backend.dir/GlobOpt.cpp.o
+[129/658] Building CXX object lib/Backend/CMakeFiles/Chakra.Backend.dir/JitAsmTraceIntegration.cpp.o
+FAILED: [code=1] lib/Backend/CMakeFiles/Chakra.Backend.dir/JitAsmTraceIntegration.cpp.o 
+/usr/bin/c++ -DBIT64=1 -DCLANG_HAS_DISABLE_TAIL_CALLS=1 -DFEATURE_PAL -DHAS_ICU -DHAS_REAL_ICU=1 -DINTL_ICU=1 -DNO_PAL_MINMAX -DPAL_STDCPP_COMPAT -DPLATFORM_UNIX -DPLATFORM_UNIX=1 -DSTACK_ALIGN=16 -DTARGET_64 -DUNICODE -D_AMD64_ -D_CHAKRACOREBUILD -D_M_AMD64 -D_M_X64 -D_SAFECRT_USE_CPP_OVERLOADS=1 -D__STDC_WANT_LIB_EXT1__=1 -I/Volumes/S/chakra/ChakraCore/. -I/Volumes/S/chakra/ChakraCore/lib/Common -I/Volumes/S/chakra/ChakraCore/lib/Common/PlaceHolder -I/Volumes/S/chakra/ChakraCore/pal -I/Volumes/S/chakra/ChakraCore/pal/inc -I/Volumes/S/chakra/ChakraCore/pal/inc/rt -I/usr/local/opt/icu4c@78/include -I/usr/local/opt/icu4c@78/include/../i18n -I/Volumes/S/chakra/ChakraCore/lib/Backend -I/Volumes/S/chakra/ChakraCore/lib/Backend/amd64 -I/Volumes/S/chakra/ChakraCore/lib/Backend/../Common -I/Volumes/S/chakra/ChakraCore/lib/Backend/../JITIDL -I/Volumes/S/chakra/ChakraCore/lib/Backend/../Runtime -I/Volumes/S/chakra/ChakraCore/lib/Backend/../Runtime/ByteCode -I/Volumes/S/chakra/ChakraCore/lib/Backend/../Runtime/Math -I/Volumes/S/chakra/ChakraCore/lib/Backend/../Parser -mmacosx-version-min=10.9 -std=gnu++11         -Wno-ignored-attributes        -Wno-parentheses-equality        -Wno-reorder        -Wno-microsoft        -Wno-unused-value        -Wno-int-to-void-pointer-cast        -Wno-invalid-offsetof        -Wno-undefined-inline        -Wno-inconsistent-missing-override        -Wno-macro-redefined        -Wno-pragmas        -Wno-invalid-token-paste        -Wno-format        -Wno-invalid-noreturn        -Wno-null-arithmetic        -Wno-tautological-constant-out-of-range-compare        -Wno-tautological-undefined-compare        -Wno-address-of-temporary        -Wno-null-conversion        -Wno-return-type        -Wno-switch        -Wno-int-to-pointer-cast        -Wno-tautological-constant-compare        -Wno-enum-compare-switch        -Wno-unknown-warning-option         -Werror         -Wno-error                  -fno-omit-frame-pointer         -fdelayed-template-parsing -O3 -DNDEBUG -std=gnu++17   -fdiagnostics-color=always -msse4.2 -mmacosx-version-min=10.9 -fasm-blocks -fms-extensions -fwrapv -fPIC -MD -MT lib/Backend/CMakeFiles/Chakra.Backend.dir/JitAsmTraceIntegration.cpp.o -MF lib/Backend/CMakeFiles/Chakra.Backend.dir/JitAsmTraceIntegration.cpp.o.d -o lib/Backend/CMakeFiles/Chakra.Backend.dir/JitAsmTraceIntegration.cpp.o -c /Volumes/S/chakra/ChakraCore/lib/Backend/JitAsmTraceIntegration.cpp
+In file included from /Volumes/S/chakra/ChakraCore/lib/Backend/JitAsmTraceIntegration.cpp:7:
+/Volumes/S/chakra/ChakraCore/lib/Backend/JitAsmTrace.h:76:35: error: unknown type name 'cs_insn'
+   76 |     void AnalyzeInstruction(const cs_insn* insn, InstructionInfo& info);
+      |                                   ^
+1 error generated.
+[130/658] Building CXX object lib/Backend/CMakeFiles/Chakra.Backend.dir/InterpreterThunkEmitter.cpp.o
+[131/658] Building CXX object lib/Backend/CMakeFiles/Chakra.Backend.dir/GlobOptFields.cpp.o
+[132/658] Building CXX object lib/Backend/CMakeFiles/Chakra.Backend.dir/GlobOptIntBounds.cpp.o
+[133/658] Building CXX object lib/Backend/CMakeFiles/Chakra.Backend.dir/IntBounds.cpp.o
+[134/658] Building CXX object lib/Backend/CMakeFiles/Chakra.Backend.dir/JavascriptNativeOperators.cpp.o
+[135/658] Building CXX object lib/Backend/CMakeFiles/Chakra.Backend.dir/JITThunkEmitter.cpp.o
+[136/658] Building CXX object lib/Backend/CMakeFiles/Chakra.Backend.dir/IR.cpp.o
+[137/658] Building CXX object lib/Backend/CMakeFiles/Chakra.Backend.dir/GlobOptBlockData.cpp.o
+[138/658] Building CXX object lib/Backend/CMakeFiles/Chakra.Backend.dir/Inline.cpp.o
+[139/658] Building CXX object lib/Backend/CMakeFiles/Chakra.Backend.dir/IRBuilder.cpp.o
+[140/658] Building CXX object lib/Backend/CMakeFiles/Chakra.Backend.dir/JITTimeConstructorCache.cpp.o
+[141/658] Building CXX object lib/Backend/CMakeFiles/Chakra.Backend.dir/IRBuilderAsmJs.cpp.o
+ninja: build stopped: subcommand failed.
