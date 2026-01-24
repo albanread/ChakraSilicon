@@ -9,6 +9,9 @@
 
 #ifdef ENABLE_CAPSTONE_DISASM
 #include <capstone/capstone.h>
+#else
+// Forward declaration when Capstone is not available
+struct cs_insn;
 #endif
 
 namespace Js

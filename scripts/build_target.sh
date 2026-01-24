@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/bin/bash
 #
 # build_target.sh - Build a single ChakraCore target variant
 #
@@ -33,13 +33,19 @@ CHAKRA_SRC="$REPO_ROOT/ChakraCore"
 BUILD_BASE="$REPO_ROOT/build"
 DIST_BASE="$REPO_ROOT/dist"
 
-# Available targets
-declare -A TARGETS=(
-    [chintx64]="x86_64:interpreter"
-    [chjitx64]="x86_64:jit"
-    [chinta64]="arm64:interpreter"
-    [chjita64]="arm64:jit"
-)
+# Target definitions (name:arch:mode)
+get_target_info() {
+    local target=$1
+    case $target in
+        chintx64) echo "x86_64:interpreter" ;;
+        chjitx64) echo "x86_64:jit" ;;
+        chinta64) echo "arm64:interpreter" ;;
+        chjita64) echo "arm64:jit" ;;
+        *) echo "" ;;
+    esac
+}
+
+ALL_TARGET_NAMES="chintx64 chjitx64 chinta64 chjita64"
 
 # Function to print colored messages
 log_info() {
@@ -84,10 +90,11 @@ EOF
 list_targets() {
     echo "Available build targets:"
     echo ""
-    for target in "${!TARGETS[@]}" | sort; do
-        IFS=':' read -r arch mode <<< "${TARGETS[$target]}"
+    for target in $ALL_TARGET_NAMES; do
+        local info=$(get_target_info "$target")
+        IFS=':' read -r arch mode <<< "$info"
         printf "  %-12s - %-13s %s\n" "$target" "$arch" "($mode)"
-    done | sort
+    done
     echo ""
 }
 
@@ -103,16 +110,16 @@ detect_generator() {
 # Function to parse target
 parse_target() {
     local target=$1
+    local info=$(get_target_info "$target")
 
-    if [[ ! -v "TARGETS[$target]" ]]; then
+    if [[ -z "$info" ]]; then
         log_error "Unknown target: $target"
         echo ""
         list_targets
         exit 1
     fi
 
-    IFS=':' read -r arch mode <<< "${TARGETS[$target]}"
-    echo "$arch:$mode"
+    echo "$info"
 }
 
 # Function to get CMake architecture flag
