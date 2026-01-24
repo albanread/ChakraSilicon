@@ -1,0 +1,207 @@
+# ChakraSilicon .gitignore
+# Exclude compiled binaries, C/C++ build artifacts, IDE files, and OS junk
+
+# -----------------------
+# OS
+# -----------------------
+.DS_Store
+Thumbs.db
+ehthumbs.db
+Icon?
+desktop.ini
+
+# -----------------------
+# Editors / IDEs
+# -----------------------
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+*.kate-swp
+*~.nib
+*~.swp
+.*.swp
+tags
+
+# -----------------------
+# Build directories
+# -----------------------
+/build/
+build_*/
+/out/
+/bin/
+/lib/
+/dist/
+/Release/
+/Debug/
+/_Release/
+/_Debug/
+/x64/
+/x86/
+/cmake-build-*/
+/cmake-out/
+/_TraceOutput/
+/_TraceOutput.txt
+
+# Keep dist structure but ignore contents
+/dist/*
+!/dist/.gitkeep
+
+# Generic intermediate directories
+obj/
+objs/
+intermediate/
+tmp/
+temp/
+
+# -----------------------
+# Compiled objects and libraries
+# -----------------------
+# Executables / Windows
+*.exe
+*.dll
+*.pdb
+*.ilk
+*.lib
+
+# Unix / macOS shared / static libraries and objects
+*.so
+*.so.*
+*.dylib
+*.a
+*.o
+*.obj
+*.lo
+*.la
+*.lai
+
+# Other compiled/linked artifacts
+*.out
+*.elf
+*.mod
+*.ko
+*.pyc
+*.pyo
+
+# -----------------------
+# Package / installer artifacts (often large)
+# -----------------------
+*.msi
+*.deb
+*.rpm
+*.pkg
+*.apk
+*.app
+*.run
+
+# Archives / compressed builds (except in dist/packages)
+*.zip
+*.tar
+*.tar.gz
+*.tgz
+*.7z
+*.sha256
+
+# But keep dist packages directory structure
+!/dist/packages/
+/dist/packages/*
+
+# -----------------------
+# Build system files
+# -----------------------
+CMakeFiles/
+CMakeCache.txt
+CMakeScripts/
+cmake_install.cmake
+install_manifest.txt
+Makefile
+build.make
+_build/
+.build/
+*.cmake
+*.cmake.user
+
+# Autotools
+config.log
+config.status
+configure
+configure.ac
+aclocal.m4
+autom4te.cache/
+
+# Meson / Ninja
+meson-logs/
+meson-private/
+build.ninja
+
+# -----------------------
+# Logs, dumps, coverage
+# -----------------------
+*.log
+*.trace
+*.dmp
+*.stackdump
+coverage/
+lcov-report/
+
+# gcov
+*.gcda
+*.gcno
+
+# -----------------------
+# IDE / Editor generated project files (Visual Studio / Xcode)
+# -----------------------
+.vs/
+*.suo
+*.user
+*.vcxproj.user
+*.opendb
+*.opensdf
+*.sdf
+*.ncb
+*.sbr
+*.VC.db
+*.xcodeproj
+*.xcworkspace
+
+# -----------------------
+# Third-party / dependency build outputs
+# -----------------------
+/deps/**/build/
+/third_party/**/build/
+/external/**/build/
+/vendor/**/build/
+
+# If you vendor prebuilt binaries in src, exclude binary libs by extension
+**/*-prebuilt.*
+**/*-binary.*
+
+# -----------------------
+# Misc
+# -----------------------
+*.orig
+*.rej
+*.bak
+*.swp
+*.tmp
+
+# Prevent accidentally committing large binaries by path patterns
+# (common build outputs)
+**/bin/**
+**/lib/**
+**/out/**
+**/build/**
+
+# -----------------------
+# Legacy / Archive directories
+# -----------------------
+/legacy/build*/
+/examination/
+
+# -----------------------
+# Example outputs
+# -----------------------
+/examples/*.txt
+/examples/*.trace
+
+# End of file
