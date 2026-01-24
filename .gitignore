@@ -224,7 +224,6 @@ lcov-report/
 # Legacy / Archive directories
 # -----------------------
 /legacy/build*/
-/examination/
 
 # -----------------------
 # Example outputs (generated test files)
