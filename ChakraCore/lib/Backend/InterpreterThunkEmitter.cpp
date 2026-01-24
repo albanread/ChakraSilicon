@@ -158,17 +158,11 @@ constexpr BYTE Epilog[] = {
 };
 #elif defined(_M_ARM64)
 
-#ifdef _WIN32
+// All ARM64 platforms now use the same prologue, so offsets are the same
 constexpr BYTE FunctionInfoOffset = 24;
 constexpr BYTE FunctionProxyOffset = 28;
 constexpr BYTE DynamicThunkAddressOffset = 32;
 constexpr BYTE ThunkAddressOffset = 36;
-#else
-constexpr BYTE FunctionInfoOffset = 8;
-constexpr BYTE FunctionProxyOffset = 12;
-constexpr BYTE DynamicThunkAddressOffset = 16;
-constexpr BYTE ThunkAddressOffset = 20;
-#endif
 
 //TODO: saravind :Implement Range Check for ARM64
 constexpr BYTE InterpreterThunk[InterpreterThunkEmitter::InterpreterThunkSize] = {

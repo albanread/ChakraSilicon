@@ -174,10 +174,11 @@ build_target() {
         log_info "JIT: Enabled"
     fi
 
-    # Set Apple Silicon JIT flag for ARM64
+    # Set Apple Silicon JIT flags for ARM64
     if [[ "$arch" == "arm64" ]]; then
-        apple_silicon_flag="-DAPPLE_SILICON_JIT=ON"
+        apple_silicon_flag="-DAPPLE_SILICON_JIT=ON -DPROHIBIT_STP_LDP=ON"
         log_info "Apple Silicon JIT: Enabled"
+        log_info "STP/LDP Prohibition: Enabled"
     fi
 
     # Configure with CMake
