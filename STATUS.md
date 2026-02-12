@@ -1,178 +1,353 @@
-# ChakraBlue Project Status
+# ChakraSilicon Project Status# ChakraBlue Project Status
 
-**Last Updated:** 2024 (Current Session)
 
-**Project:** ChakraCore with Apple Silicon ARM64 JIT support
+
+**Last Updated:** 12 February 2026**Last Updated:** 2024 (Current Session)
+
+
+
+**Project:** Port of ChakraCore JavaScript engine to Apple Silicon (ARM64 macOS)**Project:** ChakraCore with Apple Silicon ARM64 JIT support
+
+
+
+------
+
+
+
+## Current Status: JIT WORKING — FIXING REMAINING TEST FAILURES## Current Status: READY FOR X64 ANALYSIS
+
+
+
+The interpreter and JIT compiler (SimpleJit + FullJit) run natively on Apple Silicon.We have successfully set up the tools and environment needed to understand and fix the ARM64 JIT issues by analyzing the working x64 implementation.
+
+Exception handling works. The core language test suite passes at ~86%.
 
 ---
-
-## Current Status: READY FOR X64 ANALYSIS
-
-We have successfully set up the tools and environment needed to understand and fix the ARM64 JIT issues by analyzing the working x64 implementation.
 
 ---
 
 ## What Works ✅
 
+## What Works ✅
+
 ### Build System
-- ✅ All build targets compile successfully
-  - `chintx64` - x64 interpreter-only
-  - `chjitx64` - x64 JIT (working under Rosetta)
+
+### Interpreter- ✅ All build targets compile successfully
+
+- ✅ Fully working on ARM64 macOS  - `chintx64` - x64 interpreter-only
+
+- ✅ All Basics tests pass in interpreter-only mode (`-NonNative`)  - `chjitx64` - x64 JIT (working under Rosetta)
+
   - `chinta64` - ARM64 interpreter-only
-  - `chjita64` - ARM64 JIT (broken)
-- ✅ Build scripts updated and tested
-- ✅ Capstone disassembly integration (x64 and ARM64)
 
-### x64 Mac Build (Under Rosetta)
-- ✅ Compiles cleanly
+### JIT Compiler  - `chjita64` - ARM64 JIT (broken)
+
+- ✅ SimpleJit — working, all tests pass with `-off:fulljit`- ✅ Build scripts updated and tested
+
+- ✅ FullJit — working, Basics 47/51 pass- ✅ Capstone disassembly integration (x64 and ARM64)
+
+- ✅ JIT-compiled code correctly calls variadic C++ entry points (DarwinPCS fix)
+
+- ✅ JIT-compiled code correctly calls other JIT-compiled functions### x64 Mac Build (Under Rosetta)
+
+- ✅ W^X enforcement handled (`MAP_JIT` + `pthread_jit_write_protect_np`)- ✅ Compiles cleanly
+
 - ✅ All tests pass
-- ✅ JIT→INT calls work perfectly
-- ✅ Can be debugged with LLDB
-- **Location:** `./dist/chjitx64/ch`
 
-### Documentation
-- ✅ Complete research documentation in `examination/`
+### Exception Handling- ✅ JIT→INT calls work perfectly
+
+- ✅ Interpreter exceptions — all pass- ✅ Can be debugged with LLDB
+
+- ✅ SimpleJit exceptions — all pass- **Location:** `./dist/chjitx64/ch`
+
+- ✅ FullJit exceptions — all pass (verified with 10,000 iteration stress test)
+
+- ✅ try/catch/finally — working across JIT and interpreter boundaries### Documentation
+
+- ✅ Implementation: setjmp/longjmp (bypasses Apple libunwind limitation)- ✅ Complete research documentation in `examination/`
+
 - ✅ Critical unknowns cataloged
-- ✅ Debugging tools prepared
-- ✅ Test suite ready
 
-### Repository
-- ✅ Converted from submodules to flat structure
+### Build System- ✅ Debugging tools prepared
+
+- ✅ Static library build (`-DSTATIC_LIBRARY=ON`)- ✅ Test suite ready
+
+- ✅ Debug and Release configurations
+
+- ✅ Capstone integration for JIT disassembly tracing (`-TraceJitAsm`)### Repository
+
+- ✅ All four build targets compile: `chintx64`, `chjitx64`, `chinta64`, `chjita64`- ✅ Converted from submodules to flat structure
+
 - ✅ All ChakraCore source tracked
-- ✅ Organized structure (scripts, docs, examination, etc.)
-- ✅ Version control and history preserved
 
----
+### Test Results (interpreted variant — includes JIT warmup)- ✅ Organized structure (scripts, docs, examination, etc.)
 
-## What's Broken ❌
+| Suite | Pass | Fail | Notes |- ✅ Version control and history preserved
 
-### ARM64 Mac JIT (Native Apple Silicon)
-- ❌ JIT→INT calls hang infinitely
-- ❌ Cannot call interpreter-mode built-in functions from JIT code
-- ❌ Cross-function exception handling fails
-- **Location:** `./dist/chjita64/ch`
+|-------|------|------|-------|
 
-### Specific Failure Mode
-```javascript
-// This hangs on ARM64 (works on x64):
-function test() {
-    return Math.max(42, 17);  // JIT code calling built-in
+| Basics | 47 | 4 | Core language |---
+
+| TaggedIntegers | 24 | 0 | ✅ All pass |
+
+| switchStatement | 26 | 0 | ✅ All pass |## What's Broken ❌
+
+| TTExecuteBasic | 28 | 0 | ✅ All pass |
+
+| Closures | 25 | 4 | |### ARM64 Mac JIT (Native Apple Silicon)
+
+| Function | 68 | 13 | |- ❌ JIT→INT calls hang infinitely
+
+| Strings | 36 | 7 | |- ❌ Cannot call interpreter-mode built-in functions from JIT code
+
+| strict | 102 | 5 | |- ❌ Cross-function exception handling fails
+
+| fieldopts | 108 | 14 | JIT optimizations |- **Location:** `./dist/chjita64/ch`
+
+| stackfunc | 79 | 10 | |
+
+| inlining | 44 | 6 | |### Specific Failure Mode
+
+| bailout | 29 | 2 | |```javascript
+
+| es5 | 41 | 18 | |// This hangs on ARM64 (works on x64):
+
+| es6 | 128 | 110 | Many need Intl |function test() {
+
+| **Total** | **2053** | **849** | **~71% raw, ~86% excluding WASM/Debugger/Intl** |    return Math.max(42, 17);  // JIT code calling built-in
+
 }
-for (var i = 0; i < 10000; i++) test(); // Force JIT compilation
-test(); // HANGS HERE on ARM64
-```
 
----
+### Not applicable (expected failures)for (var i = 0; i < 10000; i++) test(); // Force JIT compilation
+
+| Suite | Fails | Reason |test(); // HANGS HERE on ARM64
+
+|-------|-------|--------|```
+
+| WasmSpec + wasm | 287 | WASM not ported |
+
+| DebuggerCommon | 207 | Debugger protocol not ported |---
+
+| Intl | 16 | ICU not linked |
 
 ## Root Cause (Hypothesis)
 
+---
+
 The static interpreter thunk generated by `InterpreterThunkEmitter.cpp` for ARM64 does not correctly set up the stack frame and parameters expected by:
-1. The dynamic interpreter thunk
+
+## Completed Fixes1. The dynamic interpreter thunk
+
 2. The ARGUMENTS macro
-3. The interpreter helper functions
+
+### 1. DarwinPCS Calling Convention3. The interpreter helper functions
+
+**Problem:** JIT-compiled code put arguments only in registers x0–x7. Apple's variadic ABI requires them on the stack.
 
 **File to fix:** `ChakraCore/lib/Runtime/Language/InterpreterThunkEmitter.cpp`
 
+**Fix:** JIT backend emits STR instructions to spill all register args to the outgoing stack area before BLR calls. `DECLARE_ARGS_VARARRAY` uses `va_list` on Apple ARM64. `CALL_ENTRYPOINT` uses non-variadic function pointer cast with stack duplication.
+
 ---
+
+**Files:** `Arguments.h`, `LowerMD.cpp`
 
 ## Investigation Strategy
 
-### Phase 1: Learn from x64 (NEXT STEP - START HERE)
+### 2. W^X Memory Protection
 
-**Goal:** Understand how the working x64 implementation handles JIT→INT transitions
+**Problem:** `mprotect(RWX)` causes SIGBUS on Apple Silicon.### Phase 1: Learn from x64 (NEXT STEP - START HERE)
 
-**Tools Ready:**
+
+
+**Fix:** `MAP_JIT` flag on mmap, `pthread_jit_write_protect_np()` to toggle W↔X per-thread.**Goal:** Understand how the working x64 implementation handles JIT→INT transitions
+
+
+
+**Files:** `CustomHeap.cpp`, `VirtualAllocWrapper.cpp`**Tools Ready:**
+
 - Test suite: `examination/test_jit_to_int.js`
-- LLDB script: `examination/debug_x64_thunk.lldb`
-- Debug guide: `examination/X64_DEBUGGING_GUIDE.md`
+
+### 3. Exception Handling- LLDB script: `examination/debug_x64_thunk.lldb`
+
+**Problem:** Apple's libunwind cannot transition from dynamic `.eh_frame` (JIT) to static compact `__unwind_info` (C++ runtime).- Debug guide: `examination/X64_DEBUGGING_GUIDE.md`
+
 - Quick start: `examination/QUICK_START.md`
 
-**Action Items:**
-1. Run x64 under LLDB
-2. Set breakpoint at `InterpreterStackFrame::InterpreterHelper`
-3. Capture register state, stack layout, and disassembly
-4. Document findings in `examination/X64_FINDINGS.md`
+**Fix:** setjmp/longjmp-based exception handling for Apple ARM64.
 
-**Questions to Answer:**
+**Action Items:**
+
+**Files:** `JavascriptExceptionOperators.cpp`, `ThreadContext.h`1. Run x64 under LLDB
+
+2. Set breakpoint at `InterpreterStackFrame::InterpreterHelper`
+
+### 4. DWARF .eh_frame Emission3. Capture register state, stack layout, and disassembly
+
+**Problem:** Wrong DWARF register numbers, missing CFA directives, incorrect FDE encoding.4. Document findings in `examination/X64_FINDINGS.md`
+
+
+
+**Fix:** Corrected all CFI directives for ARM64 macOS.**Questions to Answer:**
+
 - What values are in rdi, rsi, rdx, rcx, r8, r9 at thunk entry?
-- What is the stack frame layout?
+
+**Files:** `EhFrameCFI.inc`, `EhFrame.cpp`, `PrologEncoder.cpp`, `XDataAllocator.cpp`- What is the stack frame layout?
+
 - How much stack space is allocated?
-- Where are parameters stored?
-- What does the ARGUMENTS macro expect to find?
+
+### 5. Prolog/Epilog Code Generation- Where are parameters stored?
+
+**Problem:** STP/LDP pair instructions didn't match DWARF CFI expectations.- What does the ARGUMENTS macro expect to find?
+
 - What does the dynamic thunk do?
+
+**Fix:** Split into individual STR/LDR with per-register CFI.
 
 **Time Estimate:** 2-4 hours
 
+**Files:** `LowerMD.cpp`, `PrologEncoderMD.cpp`
+
 ### Phase 2: Compare with ARM64 Source
 
-**Goal:** Identify specific differences in ARM64 implementation
+### 6. Debug Output Pollution
 
-**Action Items:**
+**Problem:** fprintf debug messages in JIT pipeline were polluting stdout, causing ~2800 test failures.**Goal:** Identify specific differences in ARM64 implementation
+
+
+
+**Fix:** Removed all debug fprintf from Encoder.cpp, PDataManager.cpp, XDataAllocator.cpp, JITOutput.cpp, JitAsmTrace.cpp.**Action Items:**
+
 1. Read x64 thunk code in `InterpreterThunkEmitter.cpp`
-2. Read ARM64 thunk code in same file
+
+---2. Read ARM64 thunk code in same file
+
 3. Compare with x64 runtime behavior observed in Phase 1
-4. Identify mismatches and bugs
 
-**Time Estimate:** 1-2 hours
+## Known Issues / TODO4. Identify mismatches and bugs
 
-### Phase 3: Fix ARM64 Thunk
+
+
+### Remaining test failures (~14% of applicable tests)**Time Estimate:** 1-2 hours
+
+- Some JIT codegen issues likely remain in optimizer paths (fieldopts, inlining, bailout)
+
+- ES6 failures — many are Intl-dependent, some may be real bugs### Phase 3: Fix ARM64 Thunk
+
+- 4 Basics failures — worth investigating individually
 
 **Goal:** Make ARM64 thunk match the correct behavior observed in x64
 
-**Action Items:**
-1. Modify ARM64 thunk generation code
-2. Rebuild: `./scripts/build_target.sh chjita64`
-3. Test: `./dist/chjita64/ch examination/test_jit_to_int.js`
-4. Debug if still broken (add logging, iterate)
-5. Run full test suite when working
+### Not ported
 
-**Time Estimate:** 2-8 hours (depending on complexity)
+- **WASM** — would need same DarwinPCS and W^X fixes applied to WASM JIT**Action Items:**
+
+- **Debugger protocol** — VS Code debug adapter, Windows-centric1. Modify ARM64 thunk generation code
+
+- **Intl** — needs ICU library linkage2. Rebuild: `./scripts/build_target.sh chjita64`
+
+- **iOS** — would need JIT entitlements3. Test: `./dist/chjita64/ch examination/test_jit_to_int.js`
+
+4. Debug if still broken (add logging, iterate)
+
+### Potential JIT codegen issues to investigate5. Run full test suite when working
+
+- Register allocation edge cases on ARM64
+
+- Optimizer passes that assume x64 stack layout**Time Estimate:** 2-8 hours (depending on complexity)
+
+- Inline cache behavior differences
 
 ### Phase 4: Fix Exception Unwinding
 
+---
+
 **Goal:** Fix cross-function exception handling (separate issue)
+
+## Build Commands
 
 **See:** `examination/next_steps.md` for complete plan
 
-**Time Estimate:** 1-2 weeks
+```bash
 
----
+# Debug build**Time Estimate:** 1-2 weeks
 
-## Quick Start Commands
+cd build/chjita64_debug
+
+ninja -j10---
+
+
+
+# Run## Quick Start Commands
+
+./bin/ch/ch script.js
 
 ### Verify x64 Works
-```bash
-./dist/chjitx64/ch examination/test_jit_to_int.js
-# Expected: All 10 tests PASS
-```
+
+# Run with flags```bash
+
+./bin/ch/ch -NoNative script.js        # Interpreter only./dist/chjitx64/ch examination/test_jit_to_int.js
+
+./bin/ch/ch -off:fulljit script.js     # SimpleJit only# Expected: All 10 tests PASS
+
+./bin/ch/ch -off:simpleJit script.js   # FullJit only```
+
+./bin/ch/ch -TraceJitAsm script.js     # Show JIT disassembly
 
 ### Debug x64 (Automated)
-```bash
-lldb ./dist/chjitx64/ch
-(lldb) command source examination/debug_x64_thunk.lldb
-(lldb) run examination/test_jit_to_int.js
-# Follow prompts, capture state when breakpoint hits
-```
 
-### Test ARM64 (Will Hang)
-```bash
-timeout 10s ./dist/chjita64/ch examination/test_jit_to_int.js || echo "Timed out as expected"
-```
+# Test suite```bash
 
-### Rebuild After Changes
-```bash
-./scripts/build_target.sh chjita64
+python3 ChakraCore/test/runtests.py \lldb ./dist/chjitx64/ch
+
+  -b /Volumes/xc/chakrablue/build/chjita64_debug/bin/ch/ch \(lldb) command source examination/debug_x64_thunk.lldb
+
+  -d --show-passes --variants interpreted Basics(lldb) run examination/test_jit_to_int.js
+
+```# Follow prompts, capture state when breakpoint hits
+
 ```
 
 ---
 
-## Key Files
+### Test ARM64 (Will Hang)
 
-### To Fix
-- `ChakraCore/lib/Runtime/Language/InterpreterThunkEmitter.cpp` - **THE PRIMARY TARGET**
-- `ChakraCore/lib/Runtime/Language/Arguments.h` - ARGUMENTS macro (may need adjustment)
+## Key Files Modified```bash
 
-### To Study
+timeout 10s ./dist/chjita64/ch examination/test_jit_to_int.js || echo "Timed out as expected"
+
+| File | Change |```
+
+|------|--------|
+
+| `lib/Backend/arm64/LowerMD.cpp` | JIT lowering: stack spills, prolog/epilog |### Rebuild After Changes
+
+| `lib/Runtime/Language/Arguments.h` | DECLARE_ARGS_VARARRAY, CALL_ENTRYPOINT |```bash
+
+| `lib/Runtime/Language/JavascriptExceptionOperators.cpp` | setjmp/longjmp EH |./scripts/build_target.sh chjita64
+
+| `lib/Runtime/Base/ThreadContext.h` | jmp_buf fields for EH |```
+
+| `lib/Common/Memory/CustomHeap.cpp` | MAP_JIT allocation |
+
+| `lib/Common/Memory/VirtualAllocWrapper.cpp` | W^X toggling |---
+
+| `lib/Backend/EhFrame.cpp` | DWARF .eh_frame fixes |
+
+| `lib/Backend/EhFrameCFI.inc` | CFI directive fixes |## Key Files
+
+| `lib/Backend/PrologEncoder.cpp` | ARM64 prolog encoding |
+
+| `lib/Backend/arm64/PrologEncoderMD.cpp` | New: ARM64-specific prolog |### To Fix
+
+| `lib/Common/Memory/arm64/XDataAllocator.cpp` | XDATA size fix |- `ChakraCore/lib/Runtime/Language/InterpreterThunkEmitter.cpp` - **THE PRIMARY TARGET**
+
+| `lib/Runtime/Library/arm64/arm64_CallFunction.S` | Assembly trampoline |- `ChakraCore/lib/Runtime/Language/Arguments.h` - ARGUMENTS macro (may need adjustment)
+
+| `lib/Runtime/Language/arm64/arm64_CallEhFrame.S` | EH frame assembly |
+
+| `lib/Backend/InterpreterThunkEmitter.cpp` | Thunk fixes |### To Study
+
 - `ChakraCore/lib/Runtime/Language/InterpreterStackFrame.cpp` - Interpreter helper
 - `ChakraCore/lib/Runtime/Language/InterpreterStackFrame.h` - Stack structures
 - `ChakraCore/lib/Backend/ARM64/LowerMD.cpp` - ARM64 JIT code generation
