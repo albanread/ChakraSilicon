@@ -1,8 +1,16 @@
 # ChakraSilicon
 
-> **⚠️ WORK IN PROGRESS - NOT READY FOR PRODUCTION USE ⚠️**
->
-> This project is under active development. Build scripts and functionality are being tested and validated.
+## Why?
+
+When Chakra was released, I really enjoyed reading the source code, it was nicely designed, and
+comprehensible. Unlike some other JavaScript engines. 
+
+I want to be able to run it on my own computer, so here we are.
+
+
+> **⚠️ NOT MAINTAINED ⚠️**
+> You are welcome to fork this and maintain it for yourself.
+> This project does not accept pull requests.
 
 **A port of Microsoft's ChakraCore JavaScript engine to Apple Silicon (ARM64 macOS)**
 
@@ -83,9 +91,10 @@ This will:
 | `chinta64`  | arm64        | Disabled | Interpreter-only, Apple Silicon    |
 | `chjita64`  | arm64        | Enabled  | JIT-enabled, Apple Silicon         |
 
-## What was ported
+## What was ported or perhaps 'hacked just enough to work'
 
-ChakraCore was built for Windows x64 and had a Linux ARM64 port (AAPCS64). Neither worked on macOS ARM64 because Apple's platform has its own ABI (DarwinPCS), its own exception handling, and its own memory protection model. This port fixes all of that.
+ChakraCore was built for Windows x64 and had a Linux ARM64 port (AAPCS64). 
+Apple's platform has its own ABI (DarwinPCS), its own exception handling, and its own memory protection model. That did not work for ARN64, This version fixes all of that.
 
 ### DarwinPCS calling convention
 
