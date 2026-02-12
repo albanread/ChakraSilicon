@@ -8,6 +8,10 @@
 #include "NativeEntryPointData.h"
 #include "JitTransferData.h"
 
+#if defined(__APPLE__) && defined(_M_ARM64)
+#include <pthread.h>
+#endif
+
 #if DBG
 Js::JavascriptMethod checkCodeGenThunk;
 #endif
@@ -892,12 +896,31 @@ void NativeCodeGenerator::CodeGen(PageAllocator* pageAllocator, CodeGenWorkItemI
             nullptr;
 #endif
 
+#if defined(__APPLE__) && defined(_M_ARM64)
+        // On Apple Silicon with MAP_JIT, the thread must be in write mode during
+        // code generation (for code emission, xdata writes, debug break fills, etc.).
+        // The background JIT thread is permanently in write mode (set in StaticThreadProc).
+        // For foreground JIT on the main thread, toggle to write mode here.
+        if (foreground)
+        {
+            pthread_jit_write_protect_np(0); // Enable writing for code generation
+        }
+#endif
+
         Func::Codegen(&jitArena, jitWorkItem, scriptContext->GetThreadContext(),
             scriptContext, &jitWriteData, epInfo, nullptr, jitWorkItem->GetPolymorphicInlineCacheInfo(), allocators,
 #if !FLOATVAR
             pNumberAllocator,
 #endif
             codeGenProfiler, !foreground);
+
+#if defined(__APPLE__) && defined(_M_ARM64)
+        // After code generation, ensure the main (foreground) thread is back in execute mode.
+        if (foreground)
+        {
+            pthread_jit_write_protect_np(1); // Switch back to execute mode
+        }
+#endif
 
         if (!this->scriptContext->GetThreadContext()->GetPreReservedVirtualAllocator()->IsInRange((void*)jitWriteData.codeAddress))
         {

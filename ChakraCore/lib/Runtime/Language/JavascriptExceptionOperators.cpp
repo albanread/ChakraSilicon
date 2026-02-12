@@ -5,6 +5,10 @@
 #include "RuntimeLanguagePch.h"
 #include "Language/InterpreterStackFrame.h"
 
+#if defined(_M_ARM64) && defined(__APPLE__)
+#include <csetjmp>
+#endif
+
 #ifdef _M_IX86
 #ifdef _CONTROL_FLOW_GUARD
 extern "C" PVOID __guard_check_icall_fptr;
@@ -295,6 +299,237 @@ namespace Js
 
 #elif defined(_M_ARM32_OR_ARM64)
 
+#if defined(_M_ARM64) && defined(__APPLE__)
+    //
+    // Apple ARM64: setjmp/longjmp-based exception handling for JIT code.
+    //
+    // Apple's libunwind cannot properly walk through dynamically registered
+    // .eh_frame entries (JIT code) to reach C++ catch handlers in statically
+    // compiled code.  The C++ try/catch in OP_TryCatch never fires because
+    // the personality routine never sees the catch clause.
+    //
+    // Solution: use setjmp before calling into JIT code, and longjmp from
+    // DoThrow instead of C++ throw.  This completely bypasses DWARF unwinding
+    // for the JIT exception path.
+    //
+    // The C++ try/catch is kept as a fallback for exceptions that come from
+    // non-JIT code (interpreter bailouts, OOM, etc.) since those paths use
+    // normal C++ stack frames that Apple's unwinder handles fine.
+    //
+
+    void *JavascriptExceptionOperators::OP_TryCatch(
+        void *tryAddr,
+        void *catchAddr,
+        void *framePtr,
+        void *localsPtr,
+        size_t argsSize,
+        int hasBailedOutOffset,
+        ScriptContext *scriptContext)
+    {
+        void *continuation = nullptr;
+        JavascriptExceptionObject *exception = nullptr;
+        void * tryHandlerAddrOfReturnAddr = nullptr;
+
+        ThreadContext * threadContext = scriptContext->GetThreadContext();
+        Js::JavascriptExceptionOperators::HasBailedOutPtrStack hasBailedOutPtrStack(scriptContext, (bool*)((char*)localsPtr + hasBailedOutOffset));
+
+        PROBE_STACK(scriptContext, Constants::MinStackJitEHBailout + argsSize);
+        {
+            void * addrOfReturnAddr = (void*)((char*)framePtr + sizeof(char*));
+            Js::JavascriptExceptionOperators::TryHandlerAddrOfReturnAddrStack tryHandlerAddrOfReturnAddrStack(scriptContext, addrOfReturnAddr);
+
+            // Save/restore AutoCatchHandlerExists state manually since longjmp
+            // doesn't run C++ destructors.
+            bool prevCatchHandlerExists = threadContext->HasCatchHandler();
+            bool prevIsUserCode = threadContext->IsUserCode();
+            threadContext->SetHasCatchHandler(TRUE);
+
+            // Save previous jmp_buf so we can nest try blocks
+            jmp_buf * prevJmpBuf = threadContext->GetJitExceptionJmpBuf();
+
+            jmp_buf jmpBuf;
+            if (setjmp(jmpBuf) == 0)
+            {
+                // Normal path: set up the jmp_buf target and call into JIT code
+                threadContext->SetJitExceptionJmpBuf(&jmpBuf);
+                continuation = arm64_CallEhFrame(tryAddr, framePtr, localsPtr, argsSize);
+                // Normal return — clear the jmp_buf and restore state
+                threadContext->SetJitExceptionJmpBuf(prevJmpBuf);
+            }
+            else
+            {
+                // Exception path: longjmp landed here from DoThrow
+                threadContext->SetJitExceptionJmpBuf(prevJmpBuf);
+                exception = threadContext->GetJitExceptionObject();
+                threadContext->SetJitExceptionObject(nullptr);
+                tryHandlerAddrOfReturnAddr = threadContext->GetTryHandlerAddrOfReturnAddr();
+            }
+
+            // Restore AutoCatchHandlerExists state (equivalent to destructor)
+            threadContext->SetHasCatchHandler(prevCatchHandlerExists);
+            threadContext->SetIsUserCode(prevIsUserCode);
+        }
+
+        if (exception)
+        {
+#if ENABLE_NATIVE_CODEGEN
+            if (exception->GetExceptionContext() && exception->GetExceptionContext()->ThrowingFunction())
+            {
+                WalkStackForCleaningUpInlineeInfo(scriptContext, nullptr, tryHandlerAddrOfReturnAddr);
+            }
+#endif
+            exception = exception->CloneIfStaticExceptionObject(scriptContext);
+            bool hasBailedOut = *(bool*)((char*)localsPtr + hasBailedOutOffset);
+            if (hasBailedOut)
+            {
+                JavascriptExceptionOperators::DoThrow(exception, scriptContext);
+            }
+
+            Var exceptionObject = exception->GetThrownObject(scriptContext);
+            AssertMsg(exceptionObject, "Caught object is null.");
+            continuation = arm64_CallCatch(catchAddr, framePtr, localsPtr, argsSize, exceptionObject);
+        }
+
+        return continuation;
+    }
+
+    void *JavascriptExceptionOperators::OP_TryFinally(
+        void *tryAddr,
+        void *finallyAddr,
+        void *framePtr,
+        void *localsPtr,
+        size_t argsSize,
+        int hasBailedOutOffset,
+        ScriptContext *scriptContext)
+    {
+        void                      *tryContinuation            = nullptr;
+        JavascriptExceptionObject *exception                  = nullptr;
+        void                      *tryHandlerAddrOfReturnAddr = nullptr;
+
+        ThreadContext * threadContext = scriptContext->GetThreadContext();
+        Js::JavascriptExceptionOperators::HasBailedOutPtrStack hasBailedOutPtrStack(scriptContext, (bool*)((char*)localsPtr + hasBailedOutOffset));
+
+        PROBE_STACK(scriptContext, Constants::MinStackJitEHBailout + argsSize);
+        {
+            void * addrOfReturnAddr = (void*)((char*)framePtr + sizeof(char*));
+            Js::JavascriptExceptionOperators::TryHandlerAddrOfReturnAddrStack tryHandlerAddrOfReturnAddrStack(scriptContext, addrOfReturnAddr);
+
+            // Save previous jmp_buf so we can nest try blocks
+            jmp_buf * prevJmpBuf = threadContext->GetJitExceptionJmpBuf();
+
+            jmp_buf jmpBuf;
+            if (setjmp(jmpBuf) == 0)
+            {
+                threadContext->SetJitExceptionJmpBuf(&jmpBuf);
+                tryContinuation = arm64_CallEhFrame(tryAddr, framePtr, localsPtr, argsSize);
+                threadContext->SetJitExceptionJmpBuf(prevJmpBuf);
+            }
+            else
+            {
+                threadContext->SetJitExceptionJmpBuf(prevJmpBuf);
+                exception = threadContext->GetJitExceptionObject();
+                threadContext->SetJitExceptionObject(nullptr);
+                tryHandlerAddrOfReturnAddr = threadContext->GetTryHandlerAddrOfReturnAddr();
+            }
+        }
+        if (exception)
+        {
+            exception = exception->CloneIfStaticExceptionObject(scriptContext);
+#if ENABLE_NATIVE_CODEGEN
+            if (exception->GetExceptionContext() && exception->GetExceptionContext()->ThrowingFunction())
+            {
+                WalkStackForCleaningUpInlineeInfo(scriptContext, nullptr, tryHandlerAddrOfReturnAddr);
+            }
+#endif
+            bool hasBailedOut = *(bool*)((char*)localsPtr + hasBailedOutOffset);
+            if (hasBailedOut)
+            {
+                JavascriptExceptionOperators::DoThrow(exception, scriptContext);
+            }
+
+            {
+                Js::JavascriptExceptionOperators::PendingFinallyExceptionStack pendingFinallyExceptionStack(scriptContext, exception);
+                void * finallyContinuation = arm64_CallEhFrame(finallyAddr, framePtr, localsPtr, argsSize);
+                return finallyContinuation;
+            }
+        }
+
+        return tryContinuation;
+    }
+
+    void *JavascriptExceptionOperators::OP_TryFinallyNoOpt(
+        void *tryAddr,
+        void *finallyAddr,
+        void *framePtr,
+        void *localsPtr,
+        size_t argsSize,
+        ScriptContext *scriptContext)
+    {
+        void                      *tryContinuation = nullptr;
+        void                      *finallyContinuation = nullptr;
+        JavascriptExceptionObject *exception = nullptr;
+        void                      *tryHandlerAddrOfReturnAddr = nullptr;
+
+        ThreadContext * threadContext = scriptContext->GetThreadContext();
+
+        PROBE_STACK(scriptContext, Constants::MinStackJitEHBailout + argsSize);
+        {
+            void * addrOfReturnAddr = (void*)((char*)framePtr + sizeof(char*));
+            Js::JavascriptExceptionOperators::TryHandlerAddrOfReturnAddrStack tryHandlerAddrOfReturnAddrStack(scriptContext, addrOfReturnAddr);
+
+            // Save previous jmp_buf so we can nest try blocks
+            jmp_buf * prevJmpBuf = threadContext->GetJitExceptionJmpBuf();
+
+            jmp_buf jmpBuf;
+            if (setjmp(jmpBuf) == 0)
+            {
+                threadContext->SetJitExceptionJmpBuf(&jmpBuf);
+                tryContinuation = arm64_CallEhFrame(tryAddr, framePtr, localsPtr, argsSize);
+                threadContext->SetJitExceptionJmpBuf(prevJmpBuf);
+            }
+            else
+            {
+                threadContext->SetJitExceptionJmpBuf(prevJmpBuf);
+                exception = threadContext->GetJitExceptionObject();
+                threadContext->SetJitExceptionObject(nullptr);
+                tryHandlerAddrOfReturnAddr = threadContext->GetTryHandlerAddrOfReturnAddr();
+            }
+        }
+        if (exception)
+        {
+            exception = exception->CloneIfStaticExceptionObject(scriptContext);
+
+#if ENABLE_NATIVE_CODEGEN
+            if (exception->GetExceptionContext() && exception->GetExceptionContext()->ThrowingFunction())
+            {
+                WalkStackForCleaningUpInlineeInfo(scriptContext, nullptr, tryHandlerAddrOfReturnAddr);
+            }
+#endif
+        }
+
+        finallyContinuation = arm64_CallEhFrame(finallyAddr, framePtr, localsPtr, argsSize);
+
+        if (finallyContinuation)
+        {
+            return finallyContinuation;
+        }
+
+        if (exception)
+        {
+#if ENABLE_NATIVE_CODEGEN
+            if (scriptContext->GetThreadContext()->GetTryHandlerAddrOfReturnAddr() != nullptr)
+            {
+                WalkStackForCleaningUpInlineeInfo(scriptContext, nullptr, scriptContext->GetThreadContext()->GetTryHandlerAddrOfReturnAddr());
+            }
+#endif
+            JavascriptExceptionOperators::DoThrow(exception, scriptContext);
+        }
+
+        return tryContinuation;
+    }
+
+#else // !__APPLE__  (ARM32 and non-Apple ARM64 keep the C++ try/catch path)
+
     void *JavascriptExceptionOperators::OP_TryCatch(
         void *tryAddr,
         void *catchAddr,
@@ -331,14 +566,6 @@ namespace Js
 
         if (exception)
         {
-            // We need to clear callinfo on inlinee virtual frames on an exception.
-            // We now allow inlining of functions into callers that have try-catch/try-finally.
-            // When there is an exception inside the inlinee with caller having a try-catch, clear the inlinee callinfo by walking the stack.
-            // If not, we might have the try-catch inside a loop, and when we execute the loop next time in the interpreter on BailOnException,
-            // we will see inlined frames as being present even though they are not, because we depend on FrameInfo's callinfo to tell if an inlinee is on the stack,
-            // and we haven't cleared those bits due to the exception
-            // When we start inlining functions with try, we have to track the try addresses of the inlined functions as well.
-
 #if ENABLE_NATIVE_CODEGEN
             if (exception->GetExceptionContext() && exception->GetExceptionContext()->ThrowingFunction())
             {
@@ -349,9 +576,6 @@ namespace Js
             bool hasBailedOut = *(bool*)((char*)localsPtr + hasBailedOutOffset); // stack offsets are sp relative
             if (hasBailedOut)
             {
-                // If we have bailed out, this exception is coming from the interpreter. It should not have been caught;
-                // it so happens that this catch was on the stack and caught the exception.
-                // Re-throw!
                 JavascriptExceptionOperators::DoThrow(exception, scriptContext);
             }
 
@@ -413,9 +637,6 @@ namespace Js
             bool hasBailedOut = *(bool*)((char*)localsPtr + hasBailedOutOffset); // stack offsets are sp relative
             if (hasBailedOut)
             {
-                // If we have bailed out, this exception is coming from the interpreter. It should not have been caught;
-                // it so happens that this catch was on the stack and caught the exception.
-                // Re-throw!
                 JavascriptExceptionOperators::DoThrow(exception, scriptContext);
             }
 
@@ -502,6 +723,8 @@ namespace Js
 
         return tryContinuation;
     }
+
+#endif // __APPLE__
 
 #else
 #pragma warning(push)
@@ -1355,6 +1578,19 @@ namespace Js
     void JavascriptExceptionOperators::DoThrow(JavascriptExceptionObject* exceptionObject, ScriptContext* scriptContext)
     {
         ThreadContext* threadContext = scriptContext? scriptContext->GetThreadContext() : ThreadContext::GetContextForCurrentThread();
+
+#if defined(_M_ARM64) && defined(__APPLE__)
+        // On Apple ARM64, if we have an active JIT exception jmp_buf, use longjmp
+        // instead of C++ throw. This bypasses the broken DWARF unwind through
+        // dynamically generated JIT code.
+        jmp_buf * buf = threadContext->GetJitExceptionJmpBuf();
+        if (buf != nullptr)
+        {
+            threadContext->SetJitExceptionObject(exceptionObject);
+            longjmp(*buf, 1);
+            // NOT REACHED
+        }
+#endif
 
         // Throw a wrapper JavascriptException. catch handler must GetAndClear() the exception object.
         throw JavascriptException(threadContext, exceptionObject);

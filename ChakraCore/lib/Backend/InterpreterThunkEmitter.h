@@ -69,8 +69,11 @@ public:
 #elif defined(_M_ARM)
     static constexpr size_t InterpreterThunkSize = 72;
 #elif defined(_M_ARM64)
-    // All ARM64 platforms now use the same prologue size (64 bytes)
+#ifdef _WIN32
     static constexpr size_t InterpreterThunkSize = 64;
+#else
+    static constexpr size_t InterpreterThunkSize = 48;
+#endif
 #else
     static constexpr size_t InterpreterThunkSize = 56;
 #endif

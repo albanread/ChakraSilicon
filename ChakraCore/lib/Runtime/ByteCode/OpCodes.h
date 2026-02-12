@@ -806,9 +806,11 @@ MACRO_BACKEND_ONLY(     AdjustObjTypeReloadAuxSlotPtr,       Empty,          OpS
 
 MACRO_BACKEND_ONLY(     ExtendArg_A,         Empty,          OpCanCSE)  // extend a list of arguments to be passed to functions.
 
-#ifdef _M_X64
+#if defined(_M_X64) || (defined(_M_ARM64) && !defined(_WIN32))
 MACRO_BACKEND_ONLY(     PrologStart,        Empty,          None)
 MACRO_BACKEND_ONLY(     PrologEnd,          Empty,          None)
+#endif
+#ifdef _M_X64
 MACRO_BACKEND_ONLY(     LdArgSize,          Empty,          None)
 MACRO_BACKEND_ONLY(     LdSpillSize,        Empty,          None)
 #endif

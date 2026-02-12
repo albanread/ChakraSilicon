@@ -13,7 +13,9 @@ namespace Memory
 #ifdef _WIN32
 #define XDATA_SIZE (100)
 #else
-#define XDATA_SIZE (0x80)
+// On Apple Silicon we use individual STR/FSTR instead of STP/FSTP in JIT prologs,
+// which generates more DWARF CFI directives and needs a larger buffer.
+#define XDATA_SIZE (0x100)
 #endif
 
     struct XDataAllocation : public SecondaryAllocation

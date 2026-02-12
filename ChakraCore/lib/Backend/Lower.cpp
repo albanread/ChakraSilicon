@@ -26580,6 +26580,10 @@ Lowerer::ValidOpcodeAfterLower(IR::Instr* instr, Func * func)
     case Js::OpCode::PrologStart:
     case Js::OpCode::PrologEnd:
 #endif
+#if defined(_M_ARM64) && !defined(_WIN32)
+    case Js::OpCode::PrologStart:
+    case Js::OpCode::PrologEnd:
+#endif
 #ifdef _M_IX86
     case Js::OpCode::BailOutStackRestore:
 #endif

@@ -16,9 +16,8 @@
 # - Header-only interface for ChakraCore
 #-------------------------------------------------------------------------------------------------------
 
-# Only build Capstone if JIT tracing is enabled
-if(ENABLE_JIT_ASM_TRACE OR CMAKE_BUILD_TYPE STREQUAL "Debug")
-    message(STATUS "Capstone: Integrating disassembly engine for JIT tracing")
+# Always build Capstone for JIT tracing (controlled by -TraceJitAsm flag at runtime)
+message(STATUS "Capstone: Integrating disassembly engine for JIT tracing")
 
     # Set Capstone build options - minimal configuration
     set(CAPSTONE_BUILD_SHARED OFF CACHE BOOL "Build shared library" FORCE)
@@ -123,10 +122,7 @@ if(ENABLE_JIT_ASM_TRACE OR CMAKE_BUILD_TYPE STREQUAL "Debug")
     set(CMAKE_C_FLAGS ${CHAKRA_ORIGINAL_C_FLAGS})
     set(CMAKE_CXX_FLAGS ${CHAKRA_ORIGINAL_CXX_FLAGS})
 
-else()
-    message(STATUS "Capstone: Skipped (JIT assembly tracing disabled)")
-    set(CAPSTONE_FOUND FALSE)
-endif()
+
 
 # Export Capstone availability for ChakraCore components
 set(CAPSTONE_AVAILABLE ${CAPSTONE_FOUND} CACHE BOOL "Capstone availability" FORCE)

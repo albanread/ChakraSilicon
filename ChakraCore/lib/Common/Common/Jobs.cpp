@@ -7,6 +7,10 @@
 #include <process.h>
 #endif
 
+#if defined(__APPLE__) && defined(_M_ARM64)
+#include <pthread.h>
+#endif
+
 #include "Core/EtwTraceCore.h"
 
 #include "Exceptions/ExceptionBase.h"
@@ -1313,6 +1317,14 @@ namespace JsUtil
 
 #if DBG
         threadData->backgroundPageAllocator.SetConcurrentThreadId(GetCurrentThreadId());
+#endif
+
+#if defined(__APPLE__) && defined(_M_ARM64)
+        // On Apple Silicon with MAP_JIT, the background JIT thread only compiles code
+        // and never executes JIT code. Keep it permanently in write mode so that
+        // all writes to MAP_JIT pages (code emission, xdata, debug breaks) succeed
+        // without needing per-write toggling.
+        pthread_jit_write_protect_np(0);
 #endif
 
 #ifdef DISABLE_SEH

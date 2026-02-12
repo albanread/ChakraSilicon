@@ -5,6 +5,10 @@
 //-------------------------------------------------------------------------------------------------------
 #include "Backend.h"
 
+#if defined(__APPLE__) && defined(_M_ARM64)
+#include <pthread.h>
+#endif
+
 #if ENABLE_NATIVE_CODEGEN
 
 namespace {
@@ -158,22 +162,31 @@ constexpr BYTE Epilog[] = {
 };
 #elif defined(_M_ARM64)
 
-// All ARM64 platforms now use the same prologue, so offsets are the same
+#ifdef _WIN32
 constexpr BYTE FunctionInfoOffset = 24;
 constexpr BYTE FunctionProxyOffset = 28;
 constexpr BYTE DynamicThunkAddressOffset = 32;
 constexpr BYTE ThunkAddressOffset = 36;
+#else
+constexpr BYTE FunctionInfoOffset = 8;
+constexpr BYTE FunctionProxyOffset = 12;
+constexpr BYTE DynamicThunkAddressOffset = 16;
+constexpr BYTE ThunkAddressOffset = 20;
+#endif
 
 //TODO: saravind :Implement Range Check for ARM64
 constexpr BYTE InterpreterThunk[InterpreterThunkEmitter::InterpreterThunkSize] = {
-    // All ARM64 platforms now use the same prologue to ensure parameters are saved to stack
-    // This is required for the ARGUMENTS macro to work correctly on Darwin (macOS)
-    0xFD, 0x7B, 0xBB, 0xA9,                                         //stp         fp, lr, [sp, #-80]!   ;Prologue - allocate 80 bytes
+#ifdef _WIN32
+    0xFD, 0x7B, 0xBB, 0xA9,                                         //stp         fp, lr, [sp, #-80]!   ;Prologue
     0xFD, 0x03, 0x00, 0x91,                                         //mov         fp, sp                ;update frame pointer to the stack pointer
-    0xE0, 0x07, 0x01, 0xA9,                                         //stp         x0, x1, [sp, #16]     ;Save function and callInfo to stack
-    0xE2, 0x0F, 0x02, 0xA9,                                         //stp         x2, x3, [sp, #32]     ;Save x2, x3 to stack
-    0xE4, 0x17, 0x03, 0xA9,                                         //stp         x4, x5, [sp, #48]     ;Save x4, x5 to stack
-    0xE6, 0x1F, 0x04, 0xA9,                                         //stp         x6, x7, [sp, #64]     ;Save x6, x7 to stack
+    0xE0, 0x07, 0x01, 0xA9,                                         //stp         x0, x1, [sp, #16]     ;Prologue again; save all registers
+    0xE2, 0x0F, 0x02, 0xA9,                                         //stp         x2, x3, [sp, #32]
+    0xE4, 0x17, 0x03, 0xA9,                                         //stp         x4, x5, [sp, #48]
+    0xE6, 0x1F, 0x04, 0xA9,                                         //stp         x6, x7, [sp, #64]
+#else
+    0xFD, 0x7B, 0xBF, 0xA9,                                         //stp         fp, lr, [sp, #-16]!   ;Prologue
+    0xFD, 0x03, 0x00, 0x91,                                         //mov         fp, sp                ;update frame pointer to the stack pointer
+#endif
     0x02, 0x00, 0x40, 0xF9,                                         //ldr         x2, [x0, #0x00]       ;offset will be replaced with Offset of FunctionInfo
     0x40, 0x00, 0x40, 0xF9,                                         //ldr         x0, [x2, #0x00]       ;offset will be replaced with Offset of FunctionProxy
     0x03, 0x00, 0x40, 0xF9,                                         //ldr         x3, [x0, #0x00]       ;offset will be replaced with offset of DynamicInterpreterThunk
@@ -195,8 +208,11 @@ constexpr BYTE Call[] = {
 };
 
 constexpr BYTE Epilog[] = {
-    // All ARM64 platforms now use the same epilog (restore 80 bytes)
+#ifdef _WIN32
     0xfd, 0x7b, 0xc5, 0xa8,                                         // ldp         fp, lr, [sp], #80
+#else
+    0xfd, 0x7b, 0xc1, 0xa8,                                         // ldp         fp, lr, [sp], #16
+#endif
     0xc0, 0x03, 0x5f, 0xd6                                          // ret
 };
 #else // x86
@@ -348,13 +364,24 @@ bool InterpreterThunkEmitter::NewThunkBlock()
     Assert(this->thunkCount == 0);
     BYTE* buffer;
 
+#if defined(__APPLE__) && defined(_M_ARM64)
+    // On Apple Silicon with MAP_JIT, enable write mode for code page writes.
+    pthread_jit_write_protect_np(0);
+#endif
+
     EmitBufferAllocation<VirtualAllocWrapper, PreReservedVirtualAllocWrapper> * allocation = emitBufferManager.AllocateBuffer(BlockSize, &buffer);
     if (allocation == nullptr)
     {
+#if defined(__APPLE__) && defined(_M_ARM64)
+        pthread_jit_write_protect_np(1);
+#endif
         Js::Throw::OutOfMemory();
     }
     if (!emitBufferManager.ProtectBufferWithExecuteReadWriteForInterpreter(allocation))
     {
+#if defined(__APPLE__) && defined(_M_ARM64)
+        pthread_jit_write_protect_np(1);
+#endif
         Js::Throw::OutOfMemory();
     }
 
@@ -379,8 +406,16 @@ bool InterpreterThunkEmitter::NewThunkBlock()
 
     if (!emitBufferManager.CommitBufferForInterpreter(allocation, buffer, BlockSize))
     {
+#if defined(__APPLE__) && defined(_M_ARM64)
+        pthread_jit_write_protect_np(1);
+#endif
         Js::Throw::OutOfMemory();
     }
+
+#if defined(__APPLE__) && defined(_M_ARM64)
+    // Switch back to execute mode after writing code
+    pthread_jit_write_protect_np(1);
+#endif
 
     // Call to set VALID flag for CFG check
     BYTE* callTarget = buffer;
@@ -469,7 +504,14 @@ void InterpreterThunkEmitter::FillBuffer(
     prologEncoder.EncodeSmallProlog(PrologSize, StackAllocSize);
     DWORD pdataSize = prologEncoder.SizeOfPData();
 #elif defined(_M_ARM32_OR_ARM64)
+#ifdef _WIN32
     DWORD pdataSize = sizeof(RUNTIME_FUNCTION);
+#else
+    // On non-Windows ARM64, we generate DWARF .eh_frame data (same as x64 non-Windows)
+    PrologEncoder prologEncoder;
+    prologEncoder.EncodeSmallProlog(8 /* prologSize: stp+mov = 8 bytes */, 0 /* no extra alloc */);
+    DWORD pdataSize = prologEncoder.SizeOfPData();
+#endif
 #else
     DWORD pdataSize = 0;
 #endif
@@ -558,9 +600,17 @@ void InterpreterThunkEmitter::FillBuffer(
     BYTE* pdata = prologEncoder.Finalize(buffer, functionSize, pdataStart);
     bytesWritten = CopyWithAlignment(pdataStart, bytesRemaining, pdata, pdataSize, EMIT_BUFFER_ALIGNMENT);
 #elif defined(_M_ARM32_OR_ARM64)
+#ifdef _WIN32
     RUNTIME_FUNCTION pdata;
     GeneratePdata(buffer, functionSize, &pdata);
     bytesWritten = CopyWithAlignment(pdataStart, bytesRemaining, (const BYTE*)&pdata, pdataSize, EMIT_BUFFER_ALIGNMENT);
+#else
+    // On non-Windows ARM64, use PrologEncoder to generate DWARF .eh_frame
+    // The prologEncoder uses finalAddr (the runtime address) for the FDE pcBegin
+    Assert(bytesRemaining >= pdataSize);
+    BYTE* pdata = prologEncoder.Finalize((BYTE*)finalAddr, functionSize, pdataStart);
+    bytesWritten = CopyWithAlignment(pdataStart, bytesRemaining, pdata, pdataSize, EMIT_BUFFER_ALIGNMENT);
+#endif
 #endif
     *pdataTableStart = (PRUNTIME_FUNCTION)finalPdataStart;
     *epilogEndAddr = finalEpilogStart;

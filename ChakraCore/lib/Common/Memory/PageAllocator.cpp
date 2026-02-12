@@ -2619,6 +2619,19 @@ template<typename T>
 BOOL
 HeapPageAllocator<T>::ProtectPages(_In_ char* address, size_t pageCount, _In_ void* segmentParam, DWORD dwVirtualProtectFlags, DWORD desiredOldProtectFlag)
 {
+#if defined(__APPLE__) && defined(_M_ARM64)
+    // For MAP_JIT regions on Apple Silicon, protection is handled by
+    // pthread_jit_write_protect_np() at the CustomHeap level.
+    // Skip all mprotect/VirtualProtect/VirtualQuery calls since:
+    // 1. VirtualQuery will fail (PAL didn't track the MAP_JIT allocation)
+    // 2. VirtualProtect/mprotect can't be used with MAP_JIT pages
+    // 3. W^X toggling is per-thread via pthread_jit_write_protect_np
+    if (VirtualAllocWrapper::IsMapJitRegion(address))
+    {
+        return TRUE;
+    }
+#endif
+
     SegmentBase<T> * segment = (SegmentBase<T>*)segmentParam;
 #if DBG
     Assert(address >= segment->GetAddress());

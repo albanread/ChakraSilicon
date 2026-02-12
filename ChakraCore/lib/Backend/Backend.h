@@ -149,7 +149,7 @@ enum IRDumpFlags
 #include "QueuedFullJitWorkItem.h"
 #include "CodeGenWorkItem.h"
 #include "SimpleJitProfilingHelpers.h"
-#if defined(_M_X64)
+#if defined(_M_X64) || (defined(_M_ARM64) && !defined(_WIN32))
 #include "PrologEncoder.h"
 #endif
 #include "Func.h"

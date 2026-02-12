@@ -148,6 +148,7 @@ void XDataAllocator::Register(XDataAllocation * xdataInfo, ULONG_PTR functionSta
 
 #else  // !_WIN32
     Assert(ReadHead(xdataInfo->address));  // should be non-empty .eh_frame
+
     __REGISTER_FRAME(xdataInfo->address);
 #endif
 }

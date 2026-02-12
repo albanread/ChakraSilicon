@@ -1,0 +1,7 @@
+b Js::FunctionBody::GenerateDynamicInterpreterThunk
+run examination/early_hang_test.js
+c
+c
+c
+bt 10
+quit

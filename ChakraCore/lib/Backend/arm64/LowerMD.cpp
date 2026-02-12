@@ -605,6 +605,22 @@ LowererMD::LowerCallI(IR::Instr * callInstr, ushort callFlags, bool isHelper, IR
     IR::Opnd * opndParam = this->GetOpndForArgSlot(0);
     Lowerer::InsertMove(opndParam, functionObjOpnd, callInstr);
 
+#if defined(__APPLE__)
+    // DarwinPCS: also store function object (slot 0) to outgoing stack area
+    // so that variadic callees can find it via va_list.
+    {
+        IntConstType offset = 0 * MachRegInt;
+        IR::RegOpnd * spBase = IR::RegOpnd::New(nullptr, this->GetRegStackPointer(), TyMachReg, this->m_func);
+        IR::IndirOpnd * stackOpnd = IR::IndirOpnd::New(spBase, int32(offset), TyMachReg, this->m_func);
+        Lowerer::InsertMove(stackOpnd, opndParam, callInstr);
+
+        if (this->m_func->m_argSlotsForFunctionsCalled < 1)
+        {
+            this->m_func->m_argSlotsForFunctionsCalled = 1;
+        }
+    }
+#endif
+
     IR::Opnd *const finalDst = callInstr->GetDst();
 
     // Finally, lower the call instruction itself.
@@ -683,6 +699,26 @@ LowererMD::LowerCallArgs(IR::Instr *callInstr, IR::Instr *stackParamInsert, usho
         if (opndParam->IsRegOpnd())
         {
             callInstr->InsertBefore(argInstr);
+#if defined(__APPLE__)
+            // DarwinPCS: variadic C++ callees (like ExternalFunctionThunk) use va_list
+            // to find args on the stack, not in registers. The JIT calling convention
+            // puts args in x0-x7, but we must ALSO store them to the outgoing arg area
+            // on the stack so that DECLARE_ARGS_VARARRAY can find them via va_list.
+            // This mirrors what arm64_CallFunction does in assembly.
+            {
+                Js::ArgSlot stackSlot = argSlotNum + extraParams;
+                IntConstType offset = stackSlot * MachRegInt;
+                IR::RegOpnd * spBase = IR::RegOpnd::New(nullptr, this->GetRegStackPointer(), TyMachReg, this->m_func);
+                IR::IndirOpnd * stackOpnd = IR::IndirOpnd::New(spBase, int32(offset), TyMachReg, this->m_func);
+                IR::Instr * storeInstr = IR::Instr::New(Js::OpCode::STR, stackOpnd, opndParam->AsRegOpnd(), this->m_func);
+                callInstr->InsertBefore(storeInstr);
+
+                if (this->m_func->m_argSlotsForFunctionsCalled < (uint32)(stackSlot + 1))
+                {
+                    this->m_func->m_argSlotsForFunctionsCalled = stackSlot + 1;
+                }
+            }
+#endif
         }
         else
         {
@@ -714,6 +750,22 @@ LowererMD::LowerCallArgs(IR::Instr *callInstr, IR::Instr *stackParamInsert, usho
     }
     opndParam = this->GetOpndForArgSlot(extraParams);
     Lowerer::InsertMove(opndParam, opndCallInfo, callInstr);
+
+#if defined(__APPLE__)
+    // DarwinPCS: also store callInfo (slot 1) to outgoing stack area
+    // so that variadic callees can find it via va_list.
+    {
+        IntConstType offset = extraParams * MachRegInt;
+        IR::RegOpnd * spBase = IR::RegOpnd::New(nullptr, this->GetRegStackPointer(), TyMachReg, this->m_func);
+        IR::IndirOpnd * stackOpnd = IR::IndirOpnd::New(spBase, int32(offset), TyMachReg, this->m_func);
+        Lowerer::InsertMove(stackOpnd, opndParam, callInstr);
+
+        if (this->m_func->m_argSlotsForFunctionsCalled < (uint32)(extraParams + 1))
+        {
+            this->m_func->m_argSlotsForFunctionsCalled = extraParams + 1;
+        }
+    }
+#endif
 
     return argCount + 1 + extraParams; // + 1 for call flags
 }
@@ -1248,6 +1300,11 @@ LowererMD::LowerEntryInstr(IR::EntryInstr * entryInstr)
     insertInstr->InsertBefore(prologStartLabel);
     this->m_func->m_unwindInfo.SetFunctionOffsetLabel(UnwindPrologStart, prologStartLabel);
 
+#if !defined(_WIN32)
+    // On non-Windows, emit a PrologStart pragma for the EhFrame-based PrologEncoder
+    prologStartLabel->InsertBefore(IR::PragmaInstr::New(Js::OpCode::PrologStart, 0, this->m_func));
+#endif
+
     // Perform the initial stack allocation (guaranteed to be small)
     IR::RegOpnd *spOpnd = IR::RegOpnd::New(nullptr, RegSP, TyMachReg, this->m_func);
     if (stackAllocation1 > 0)
@@ -1256,7 +1313,7 @@ LowererMD::LowerEntryInstr(IR::EntryInstr * entryInstr)
         insertInstr->InsertBefore(instrSub);
     }
 
-    // Save doubles in pairs
+    // Save doubles
     if (!layout.SavedDoubles().IsEmpty())
     {
         ULONG curOffset = layout.SavedDoublesOffset() - stackAllocation2;
@@ -1265,17 +1322,32 @@ LowererMD::LowerEntryInstr(IR::EntryInstr * entryInstr)
             if (layout.SavedDoubles().Test(curReg))
             {
                 RegNum nextReg = RegNum(curReg + 1);
+#if defined(_WIN32)
+                // Windows: use STP (paired store) as before
                 IR::Instr * instrStp = IR::Instr::New(Js::OpCode::FSTP,
                     IR::IndirOpnd::New(spOpnd, curOffset, TyMachReg, this->m_func),
                     IR::RegOpnd::New(curReg, TyMachDouble, this->m_func),
                     IR::RegOpnd::New(nextReg, TyMachDouble, this->m_func), this->m_func);
                 insertInstr->InsertBefore(instrStp);
+#else
+                // Apple Silicon: use individual STR for each register.
+                // STP/LDP in dynamically generated code prologs can cause
+                // instability with Apple's unwinder and memory subsystem.
+                IR::Instr * instrStr1 = IR::Instr::New(Js::OpCode::FSTR,
+                    IR::IndirOpnd::New(spOpnd, curOffset, TyMachReg, this->m_func),
+                    IR::RegOpnd::New(curReg, TyMachDouble, this->m_func), this->m_func);
+                insertInstr->InsertBefore(instrStr1);
+                IR::Instr * instrStr2 = IR::Instr::New(Js::OpCode::FSTR,
+                    IR::IndirOpnd::New(spOpnd, curOffset + MachRegDouble, TyMachReg, this->m_func),
+                    IR::RegOpnd::New(nextReg, TyMachDouble, this->m_func), this->m_func);
+                insertInstr->InsertBefore(instrStr2);
+#endif
                 curOffset += 2 * MachRegDouble;
             }
         }
     }
 
-    // Save integer registers in pairs
+    // Save integer registers
     if (!layout.SavedRegisters().IsEmpty())
     {
         ULONG curOffset = layout.SavedRegistersOffset() - stackAllocation2;
@@ -1284,11 +1356,23 @@ LowererMD::LowerEntryInstr(IR::EntryInstr * entryInstr)
             if (layout.SavedRegisters().Test(curReg))
             {
                 RegNum nextReg = RegNum(curReg + 1);
+#if defined(_WIN32)
                 IR::Instr * instrStp = IR::Instr::New(Js::OpCode::STP,
                     IR::IndirOpnd::New(spOpnd, curOffset, TyMachReg, this->m_func),
                     IR::RegOpnd::New(curReg, TyMachReg, this->m_func),
                     IR::RegOpnd::New(nextReg, TyMachReg, this->m_func), this->m_func);
                 insertInstr->InsertBefore(instrStp);
+#else
+                // Apple Silicon: use individual STR for each register
+                IR::Instr * instrStr1 = IR::Instr::New(Js::OpCode::STR,
+                    IR::IndirOpnd::New(spOpnd, curOffset, TyMachReg, this->m_func),
+                    IR::RegOpnd::New(curReg, TyMachReg, this->m_func), this->m_func);
+                insertInstr->InsertBefore(instrStr1);
+                IR::Instr * instrStr2 = IR::Instr::New(Js::OpCode::STR,
+                    IR::IndirOpnd::New(spOpnd, curOffset + MachRegInt, TyMachReg, this->m_func),
+                    IR::RegOpnd::New(nextReg, TyMachReg, this->m_func), this->m_func);
+                insertInstr->InsertBefore(instrStr2);
+#endif
                 curOffset += 2 * MachRegInt;
             }
         }
@@ -1298,19 +1382,44 @@ LowererMD::LowerEntryInstr(IR::EntryInstr * entryInstr)
     IR::RegOpnd *fpOpnd = fpOpnd = IR::RegOpnd::New(nullptr, RegFP, TyMachReg, this->m_func);
     if (layout.HasCalls())
     {
-        // STP fp, lr, [sp, #offs]
         ULONG fpOffset = layout.FpLrOffset() - stackAllocation2;
+#if defined(_WIN32)
+        // STP fp, lr, [sp, #offs]
         IR::Instr * instrStp = IR::Instr::New(Js::OpCode::STP,
             IR::IndirOpnd::New(spOpnd, fpOffset, TyMachReg, this->m_func),
             fpOpnd, IR::RegOpnd::New(RegLR, TyMachReg, this->m_func), this->m_func);
         insertInstr->InsertBefore(instrStp);
+#else
+        // Apple Silicon: use individual STR for fp and lr
+        IR::Instr * instrStrFp = IR::Instr::New(Js::OpCode::STR,
+            IR::IndirOpnd::New(spOpnd, fpOffset, TyMachReg, this->m_func),
+            fpOpnd, this->m_func);
+        insertInstr->InsertBefore(instrStrFp);
+        IR::Instr * instrStrLr = IR::Instr::New(Js::OpCode::STR,
+            IR::IndirOpnd::New(spOpnd, fpOffset + MachRegInt, TyMachReg, this->m_func),
+            IR::RegOpnd::New(RegLR, TyMachReg, this->m_func), this->m_func);
+        insertInstr->InsertBefore(instrStrLr);
+#endif
 
         // ADD fp, sp, #offs
-        // For exception handling, do this part AFTER the prolog to allow for proper unwinding
+#if defined(_WIN32)
+        // On Windows, for exception handling, do this part AFTER the prolog to allow for proper unwinding
         if (!layout.HasTry())
         {
             Lowerer::InsertAdd(false, fpOpnd, spOpnd, IR::IntConstOpnd::New(fpOffset, TyMachReg, this->m_func), insertInstr);
         }
+#else
+        // On non-Windows (DWARF), always set up FP inside the prolog so that PrologEncoder
+        // can emit def_cfa(FP, offset). This is critical for exception handling through
+        // JIT-compiled code - the unwinder needs FP-based CFA since arm64_CallEhFrame
+        // modifies SP before entering the try body.
+        if (stackAllocation2 == 0)
+        {
+            // Single allocation: offset is from current SP
+            Lowerer::InsertAdd(false, fpOpnd, spOpnd, IR::IntConstOpnd::New(fpOffset, TyMachReg, this->m_func), insertInstr);
+        }
+        // else: will insert ADD fp after the second stack allocation below
+#endif
     }
 
     // Perform the second (potentially large) stack allocation
@@ -1319,6 +1428,14 @@ LowererMD::LowerEntryInstr(IR::EntryInstr * entryInstr)
         // TODO: is the probeSize parameter correct here?
         this->GenerateStackAllocation(insertInstr, stackAllocation2, stackAllocation1 + stackAllocation2);
     }
+
+#if !defined(_WIN32)
+    // On non-Windows, if there was a second stack allocation, set up FP now (after SP is final)
+    if (layout.HasCalls() && stackAllocation2 > 0)
+    {
+        Lowerer::InsertAdd(false, fpOpnd, spOpnd, IR::IntConstOpnd::New(layout.FpLrOffset(), TyMachReg, this->m_func), insertInstr);
+    }
+#endif
 
     // Future work in the register area should be done FP-relative if it is set up
     IR::RegOpnd *regAreaBaseOpnd = layout.HasCalls() ? fpOpnd : spOpnd;
@@ -1329,11 +1446,18 @@ LowererMD::LowerEntryInstr(IR::EntryInstr * entryInstr)
     insertInstr->InsertBefore(prologEndLabel);
     this->m_func->m_unwindInfo.SetFunctionOffsetLabel(UnwindPrologEnd, prologEndLabel);
 
-    // Compute the FP now if there is a try present
+#if !defined(_WIN32)
+    // On non-Windows, emit a PrologEnd pragma for the EhFrame-based PrologEncoder
+    prologEndLabel->InsertAfter(IR::PragmaInstr::New(Js::OpCode::PrologEnd, 0, this->m_func));
+#endif
+
+#if defined(_WIN32)
+    // On Windows, compute the FP now if there is a try present (after prolog for Windows unwind)
     if (layout.HasTry())
     {
         Lowerer::InsertAdd(false, fpOpnd, spOpnd, IR::IntConstOpnd::New(layout.FpLrOffset(), TyMachReg, this->m_func), insertInstr);
     }
+#endif
 
     // Zero the argument slot if present
     IR::RegOpnd *zrOpnd = IR::RegOpnd::New(nullptr, RegZR, TyMachReg, this->m_func);
@@ -1431,15 +1555,26 @@ LowererMD::LowerExitInstr(IR::ExitInstr * exitInstr)
     // Recover FP and LR
     if (layout.HasCalls())
     {
-        // LDP fp, lr, [sp, #offs]
         ULONG fpOffset = layout.FpLrOffset() - stackAllocation2;
+#if defined(_WIN32)
+        // LDP fp, lr, [sp, #offs]
         IR::Instr * instrLdp = IR::Instr::New(Js::OpCode::LDP, fpOpnd,
             IR::IndirOpnd::New(spOpnd, fpOffset, TyMachReg, this->m_func),
             IR::RegOpnd::New(RegLR, TyMachReg, this->m_func), this->m_func);
         exitInstr->InsertBefore(instrLdp);
+#else
+        // Apple Silicon: use individual LDR for each register
+        IR::Instr * instrLdrFp = IR::Instr::New(Js::OpCode::LDR, fpOpnd,
+            IR::IndirOpnd::New(spOpnd, fpOffset, TyMachReg, this->m_func), this->m_func);
+        exitInstr->InsertBefore(instrLdrFp);
+        IR::Instr * instrLdrLr = IR::Instr::New(Js::OpCode::LDR,
+            IR::RegOpnd::New(RegLR, TyMachReg, this->m_func),
+            IR::IndirOpnd::New(spOpnd, fpOffset + MachRegInt, TyMachReg, this->m_func), this->m_func);
+        exitInstr->InsertBefore(instrLdrLr);
+#endif
     }
 
-    // Recover integer registers in pairs
+    // Recover integer registers
     if (!layout.SavedRegisters().IsEmpty())
     {
         ULONG curOffset = layout.SavedRegistersOffset() - stackAllocation2 + layout.SavedRegistersSize();
@@ -1449,16 +1584,28 @@ LowererMD::LowerExitInstr(IR::ExitInstr * exitInstr)
             {
                 curOffset -= 2 * MachRegInt;
                 RegNum nextReg = RegNum(curReg + 1);
+#if defined(_WIN32)
                 IR::Instr * instrLdp = IR::Instr::New(Js::OpCode::LDP,
                     IR::RegOpnd::New(curReg, TyMachReg, this->m_func),
                     IR::IndirOpnd::New(spOpnd, curOffset, TyMachReg, this->m_func),
                     IR::RegOpnd::New(nextReg, TyMachReg, this->m_func), this->m_func);
                 exitInstr->InsertBefore(instrLdp);
+#else
+                // Apple Silicon: use individual LDR for each register
+                IR::Instr * instrLdr1 = IR::Instr::New(Js::OpCode::LDR,
+                    IR::RegOpnd::New(curReg, TyMachReg, this->m_func),
+                    IR::IndirOpnd::New(spOpnd, curOffset, TyMachReg, this->m_func), this->m_func);
+                exitInstr->InsertBefore(instrLdr1);
+                IR::Instr * instrLdr2 = IR::Instr::New(Js::OpCode::LDR,
+                    IR::RegOpnd::New(nextReg, TyMachReg, this->m_func),
+                    IR::IndirOpnd::New(spOpnd, curOffset + MachRegInt, TyMachReg, this->m_func), this->m_func);
+                exitInstr->InsertBefore(instrLdr2);
+#endif
             }
         }
     }
 
-    // Recover doubles in pairs
+    // Recover doubles
     if (!layout.SavedDoubles().IsEmpty())
     {
         ULONG curOffset = layout.SavedDoublesOffset() - stackAllocation2 + layout.SavedDoublesSize();
@@ -1468,11 +1615,23 @@ LowererMD::LowerExitInstr(IR::ExitInstr * exitInstr)
             {
                 curOffset -= 2 * MachRegDouble;
                 RegNum nextReg = RegNum(curReg + 1);
+#if defined(_WIN32)
                 IR::Instr * instrLdp = IR::Instr::New(Js::OpCode::FLDP,
                     IR::RegOpnd::New(curReg, TyMachDouble, this->m_func),
                     IR::IndirOpnd::New(spOpnd, curOffset, TyMachReg, this->m_func),
                     IR::RegOpnd::New(nextReg, TyMachDouble, this->m_func), this->m_func);
                 exitInstr->InsertBefore(instrLdp);
+#else
+                // Apple Silicon: use individual FLDR for each register
+                IR::Instr * instrLdr1 = IR::Instr::New(Js::OpCode::FLDR,
+                    IR::RegOpnd::New(curReg, TyMachDouble, this->m_func),
+                    IR::IndirOpnd::New(spOpnd, curOffset, TyMachReg, this->m_func), this->m_func);
+                exitInstr->InsertBefore(instrLdr1);
+                IR::Instr * instrLdr2 = IR::Instr::New(Js::OpCode::FLDR,
+                    IR::RegOpnd::New(nextReg, TyMachDouble, this->m_func),
+                    IR::IndirOpnd::New(spOpnd, curOffset + MachRegDouble, TyMachReg, this->m_func), this->m_func);
+                exitInstr->InsertBefore(instrLdr2);
+#endif
             }
         }
     }

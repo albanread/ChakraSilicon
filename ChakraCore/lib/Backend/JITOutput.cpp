@@ -8,9 +8,7 @@
 #include "JitTransferData.h"
 #include "JitAsmTrace.h"
 
-#ifdef ENABLE_CAPSTONE_DISASM
 extern "C" bool IsTraceJitAsmEnabled();
-#endif
 
 JITOutput::JITOutput(JITOutputIDL * outputData) :
     m_outputData(outputData),
@@ -310,13 +308,11 @@ JITOutput::FinalizeNativeCode()
         }
     }
 
-#ifdef ENABLE_CAPSTONE_DISASM
     // JIT Assembly Tracing Integration
     if (IsTraceJitAsmEnabled() && m_outputData->codeAddress && m_outputData->codeSize > 0)
     {
         TRACE_JIT_FUNCTION(m_func, (void*)m_outputData->codeAddress, m_outputData->codeSize);
     }
-#endif
 }
 
 CustomHeap::Allocation *

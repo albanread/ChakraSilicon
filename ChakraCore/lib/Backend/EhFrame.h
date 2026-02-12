@@ -149,6 +149,20 @@ class EhFrame
 #include "EhFrameCFI.inc"
 
         void cfi_advance(uword advance);
+
+        // Smart cfi_offset that uses the short form for registers 0-63
+        // and the extended form for registers >= 64 (e.g., ARM64 NEON regs)
+        void cfi_offset_auto(ubyte reg, ULEB128 offset)
+        {
+            if (reg <= 0x3F)
+            {
+                cfi_offset(reg, offset);
+            }
+            else
+            {
+                cfi_offset_extended(ULEB128(reg), offset);
+            }
+        }
     };
 
     // Common Information Entry

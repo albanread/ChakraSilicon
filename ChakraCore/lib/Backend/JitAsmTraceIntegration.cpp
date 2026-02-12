@@ -18,23 +18,20 @@ static bool g_jitTracingEnabled = false;
 
 extern "C" bool IsTraceJitAsmEnabled()
 {
-    // Check environment variable on first call
+    // Check environment variable and command line flag on first call
     static bool initialized = false;
     if (!initialized)
     {
+        // Check environment variable
         const char* envVar = getenv("CHAKRA_TRACE_JIT_ASM");
         if (envVar && (strcmp(envVar, "1") == 0 || strcmp(envVar, "true") == 0))
         {
             g_jitTracingEnabled = true;
         }
         
-#ifdef _DEBUG
-        // Enable by default in debug builds if environment variable is not explicitly set to "0"
-        if (!envVar || strcmp(envVar, "0") != 0)
-        {
-            g_jitTracingEnabled = true;
-        }
-#endif
+        // Check command line flag -TraceJitAsm
+        // Note: HostConfigFlags is defined in ch host, not available in library build
+        // This will be checked via environment variable or explicit API call
         
         initialized = true;
     }
@@ -46,6 +43,15 @@ extern "C" bool IsTraceJitAsmEnabled()
 extern "C" void SetTraceJitAsmEnabled(bool enabled)
 {
     g_jitTracingEnabled = enabled;
+    JitAsmTracer::SetEnabled(enabled);
+    
+    if (enabled)
+    {
+        JitAsmTracer::SetVerbosity(2); // Full analysis
+        fprintf(stderr, "\n=== ChakraCore JIT Assembly Tracing Enabled ===\n");
+        fprintf(stderr, "Controlled by -TraceJitAsm command line flag\n");
+        fprintf(stderr, "================================================\n\n");
+    }
 }
 
 // Static initialization of tracing system

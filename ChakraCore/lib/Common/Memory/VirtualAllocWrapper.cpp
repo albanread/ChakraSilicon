@@ -4,11 +4,79 @@
 //-------------------------------------------------------------------------------------------------------
 #include "CommonMemoryPch.h"
 
+#if defined(__APPLE__) && defined(_M_ARM64)
+#include <sys/mman.h>
+#include <pthread.h>
+#include <libkern/OSCacheControl.h>
+#endif
+
 /*
 * class VirtualAllocWrapper
 */
 
 VirtualAllocWrapper VirtualAllocWrapper::Instance;  // single instance
+
+#if defined(__APPLE__) && defined(_M_ARM64)
+// Apple Silicon MAP_JIT tracking: we track which address ranges were allocated
+// with MAP_JIT so that ProtectPages can use pthread_jit_write_protect_np
+// instead of mprotect for these regions.
+//
+// We use a simple fixed-size table. JIT engines typically don't allocate
+// thousands of separate code segments.
+struct MapJitRegion {
+    void* address;
+    ::size_t size;
+};
+static const int kMaxMapJitRegions = 256;
+static MapJitRegion s_mapJitRegions[kMaxMapJitRegions];
+static int s_mapJitRegionCount = 0;
+static pthread_mutex_t s_mapJitMutex = PTHREAD_MUTEX_INITIALIZER;
+
+void VirtualAllocWrapper::RegisterMapJitRegion(void* address, ::size_t size)
+{
+    pthread_mutex_lock(&s_mapJitMutex);
+    if (s_mapJitRegionCount < kMaxMapJitRegions)
+    {
+        s_mapJitRegions[s_mapJitRegionCount].address = address;
+        s_mapJitRegions[s_mapJitRegionCount].size = size;
+        s_mapJitRegionCount++;
+    }
+    pthread_mutex_unlock(&s_mapJitMutex);
+}
+
+void VirtualAllocWrapper::UnregisterMapJitRegion(void* address)
+{
+    pthread_mutex_lock(&s_mapJitMutex);
+    for (int i = 0; i < s_mapJitRegionCount; i++)
+    {
+        if (s_mapJitRegions[i].address == address)
+        {
+            s_mapJitRegions[i] = s_mapJitRegions[s_mapJitRegionCount - 1];
+            s_mapJitRegionCount--;
+            break;
+        }
+    }
+    pthread_mutex_unlock(&s_mapJitMutex);
+}
+
+bool VirtualAllocWrapper::IsMapJitRegion(void* address)
+{
+    pthread_mutex_lock(&s_mapJitMutex);
+    bool found = false;
+    for (int i = 0; i < s_mapJitRegionCount; i++)
+    {
+        char* start = (char*)s_mapJitRegions[i].address;
+        char* end = start + s_mapJitRegions[i].size;
+        if ((char*)address >= start && (char*)address < end)
+        {
+            found = true;
+            break;
+        }
+    }
+    pthread_mutex_unlock(&s_mapJitMutex);
+    return found;
+}
+#endif // __APPLE__ && _M_ARM64
 
 LPVOID VirtualAllocWrapper::AllocPages(LPVOID lpAddress, size_t pageCount, DWORD allocationType, DWORD protectFlags, bool isCustomHeapAllocation)
 {
@@ -19,6 +87,70 @@ LPVOID VirtualAllocWrapper::AllocPages(LPVOID lpAddress, size_t pageCount, DWORD
     size_t dwSize = pageCount * AutoSystemInfo::PageSize;
 
     LPVOID address = nullptr;
+
+#if defined(__APPLE__) && defined(_M_ARM64)
+    // On Apple Silicon, code pages (custom heap allocations) must use MAP_JIT
+    // so that we can use pthread_jit_write_protect_np() for per-thread W^X toggling.
+    // This avoids the race condition where mprotect removes execute permission
+    // from a page while another thread is executing code on it.
+    if (isCustomHeapAllocation && (allocationType & MEM_RESERVE))
+    {
+        // Use mmap with MAP_JIT directly, bypassing the PAL VirtualAlloc
+        // which uses vm_allocate + mmap(MAP_FIXED) and can't support MAP_JIT.
+        //
+        // Windows VirtualAlloc guarantees 64KB alignment (allocation granularity).
+        // mmap on macOS only guarantees page alignment (16KB on ARM64).
+        // ChakraCore's PageAllocator asserts 64KB alignment, so we over-allocate
+        // and then trim to get a 64KB-aligned region.
+        const ::size_t kAllocGranularity = 64 * 1024;
+        ::size_t allocSize = dwSize + kAllocGranularity; // Extra space for alignment
+
+        // The calling thread (background JIT) should already be in write mode.
+        void* rawAddr = mmap(NULL, allocSize, PROT_READ | PROT_WRITE | PROT_EXEC,
+                       MAP_PRIVATE | MAP_ANON | MAP_JIT, -1, 0);
+        if (rawAddr == MAP_FAILED)
+        {
+            MemoryOperationLastError::RecordLastError();
+            return nullptr;
+        }
+
+        // Align up to 64KB boundary
+        uintptr_t rawAddrVal = (uintptr_t)rawAddr;
+        uintptr_t alignedAddrVal = (rawAddrVal + kAllocGranularity - 1) & ~(kAllocGranularity - 1);
+        address = (LPVOID)alignedAddrVal;
+
+        // Trim leading and trailing excess pages
+        ::size_t leadingBytes = alignedAddrVal - rawAddrVal;
+        ::size_t trailingBytes = allocSize - leadingBytes - dwSize;
+        if (leadingBytes > 0)
+        {
+            munmap(rawAddr, leadingBytes);
+        }
+        if (trailingBytes > 0)
+        {
+            munmap((void*)(alignedAddrVal + dwSize), trailingBytes);
+        }
+
+        // Zero-fill the memory (mmap should do this, but be safe)
+        memset(address, 0, dwSize);
+
+        // Register this region so ProtectPages knows to use JIT write protect
+        RegisterMapJitRegion(address, dwSize);
+
+        return address;
+    }
+
+    // For MAP_JIT regions, MEM_COMMIT is a no-op (already committed by mmap)
+    if (isCustomHeapAllocation && (allocationType & MEM_COMMIT) && !(allocationType & MEM_RESERVE))
+    {
+        // The region was already fully committed during the MAP_JIT mmap.
+        // Just return the address. The page is already RWX via MAP_JIT.
+        if (lpAddress != nullptr)
+        {
+            return lpAddress;
+        }
+    }
+#endif // __APPLE__ && _M_ARM64
 
 #if defined(ENABLE_JIT_CLAMP)
     bool makeExecutable;
@@ -83,6 +215,38 @@ LPVOID VirtualAllocWrapper::AllocPages(LPVOID lpAddress, size_t pageCount, DWORD
 
 BOOL VirtualAllocWrapper::Free(LPVOID lpAddress, size_t dwSize, DWORD dwFreeType)
 {
+#if defined(__APPLE__) && defined(_M_ARM64)
+    // For MAP_JIT regions, use munmap directly since we bypassed VirtualAlloc
+    if (IsMapJitRegion(lpAddress) && dwFreeType == MEM_RELEASE)
+    {
+        // Look up the allocation size before unregistering
+        ::size_t regionSize = 0;
+        pthread_mutex_lock(&s_mapJitMutex);
+        for (int i = 0; i < s_mapJitRegionCount; i++)
+        {
+            if (s_mapJitRegions[i].address == lpAddress)
+            {
+                regionSize = s_mapJitRegions[i].size;
+                // Remove from tracking (swap with last)
+                s_mapJitRegions[i] = s_mapJitRegions[s_mapJitRegionCount - 1];
+                s_mapJitRegionCount--;
+                break;
+            }
+        }
+        pthread_mutex_unlock(&s_mapJitMutex);
+
+        if (regionSize > 0)
+        {
+            munmap(lpAddress, regionSize);
+        }
+        return TRUE;
+    }
+    if (IsMapJitRegion(lpAddress) && dwFreeType == MEM_DECOMMIT)
+    {
+        // For MAP_JIT pages, decommit is a no-op since the pages are always committed
+        return TRUE;
+    }
+#endif
     AnalysisAssert(dwFreeType == MEM_RELEASE || dwFreeType == MEM_DECOMMIT);
     size_t bytes = (dwFreeType == MEM_RELEASE)? 0 : dwSize;
 #pragma warning(suppress: 28160) // Calling VirtualFreeEx without the MEM_RELEASE flag frees memory but not address descriptors (VADs)

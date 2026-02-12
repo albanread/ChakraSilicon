@@ -1,0 +1,7 @@
+b JavascriptExceptionOperators::OP_TryCatch
+breakpoint modify 1 -i 49
+run
+frame variable scriptContext
+p scriptContext->GetThreadContext()
+c
+quit

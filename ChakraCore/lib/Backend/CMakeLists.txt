@@ -36,8 +36,11 @@ elseif(CC_TARGETS_ARM64)
         arm64/LinearScanMdA.S
         arm64/LowerMD.cpp
         arm64/PeepsMD.cpp
+        arm64/PrologEncoderMD.cpp
         arm64/Thunks.S
         arm64/UnwindInfoManager.cpp
+        EhFrame.cpp
+        PrologEncoder.cpp
     )
 
     # Apple Silicon JIT support

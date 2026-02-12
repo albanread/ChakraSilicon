@@ -360,7 +360,14 @@ EmitBufferManager<TAlloc, TPreReservedAlloc, SyncObject>::AllocateBuffer(_In_ si
 #if DBG
     MEMORY_BASIC_INFORMATION memBasicInfo;
     size_t resultBytes = VirtualQueryEx(this->processHandle, allocation->allocation->address, &memBasicInfo, sizeof(memBasicInfo));
+#if defined(__APPLE__) && defined(_M_ARM64)
+    // MAP_JIT pages are tracked outside the PAL, so VirtualQuery returns vm_region
+    // info with RWX protection (the kernel-level MAP_JIT protection). Skip assertion.
+    Assert(resultBytes == 0 || memBasicInfo.Protect == PAGE_EXECUTE_READ
+        || VirtualAllocWrapper::IsMapJitRegion(allocation->allocation->address));
+#else
     Assert(resultBytes == 0 || memBasicInfo.Protect == PAGE_EXECUTE_READ);
+#endif
 #endif
 
     return allocation;

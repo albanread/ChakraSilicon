@@ -74,6 +74,81 @@
     ; x3 -- size of stack args area
     ; x4 -- exception object (for arm64_CallCatch only)
 
+#if defined(__APPLE__)
+    ; On Apple platforms, we need correct DWARF CFI so the C++ exception
+    ; unwinder can walk through this frame to reach the catch handler in
+    ; OP_TryCatch.  The original code stored registers below SP without
+    ; adjusting SP first, producing negative CFA-relative offsets that
+    ; Apple's libunwind cannot handle.
+    ;
+    ; Strategy: allocate the 240-byte save area with a pre-indexed STP
+    ; that saves FP/LR at their correct layout positions (offsets 160/168).
+    ; Then set FP = SP + 160 (matching what the JIT function epilog expects).
+    ; With CFA = FP + 80 = original SP, the dynamic stack allocation below
+    ; doesn't affect CFA and the unwinder can always find saved registers.
+    ;
+    ; Frame layout (same offsets from SP as the original, same as JIT epilog):
+    ;   SP+0    .. SP+63   : d8-d15
+    ;   SP+64   .. SP+143  : x19-x28
+    ;   SP+144  .. SP+159  : ArgOut / stack function list
+    ;   SP+160  .. SP+167  : FP  (frame pointer points here)
+    ;   SP+168  .. SP+175  : LR
+    ;   SP+176  .. SP+239  : Homed parameters
+    ; = 240 total
+
+    ; Allocate 240-byte save area
+    sub     sp, sp, #240
+    .cfi_def_cfa_offset 240
+
+    ; Save FP and LR at their correct layout positions
+    stp     fp, lr, [sp, #160]
+    .cfi_offset w29, -80                ; fp at SP+160 = CFA-80
+    .cfi_offset w30, -72                ; lr at SP+168 = CFA-72
+
+    ; Set FP = SP + 160, then CFA = FP + 80 = original SP
+    add     fp, sp, #160
+    .cfi_def_cfa w29, 80
+
+    ; Save non-volatile double registers (d8-d15)
+    stp     d8,  d9,  [sp, #0]
+    stp     d10, d11, [sp, #16]
+    stp     d12, d13, [sp, #32]
+    stp     d14, d15, [sp, #48]
+    .cfi_offset b8,  -240
+    .cfi_offset b9,  -232
+    .cfi_offset b10, -224
+    .cfi_offset b11, -216
+    .cfi_offset b12, -208
+    .cfi_offset b13, -200
+    .cfi_offset b14, -192
+    .cfi_offset b15, -184
+
+    ; Save non-volatile integer registers (x19-x28)
+    stp     x19, x20, [sp, #64]
+    stp     x21, x22, [sp, #80]
+    stp     x23, x24, [sp, #96]
+    stp     x25, x26, [sp, #112]
+    stp     x27, x28, [sp, #128]
+    .cfi_offset w19, -176
+    .cfi_offset w20, -168
+    .cfi_offset w21, -160
+    .cfi_offset w22, -152
+    .cfi_offset w23, -144
+    .cfi_offset w24, -136
+    .cfi_offset w25, -128
+    .cfi_offset w26, -120
+    .cfi_offset w27, -112
+    .cfi_offset w28, -104
+
+    ; Dynamic stack allocation for locals + stack args
+    ; CFA is FP-based so no CFI adjustment needed for this.
+    sub     x15, x1, x2         ; x15 = frame pointer minus locals pointer
+    sub     x15, x15, #160      ; x15 -= space already allocated above FP
+    add     x15, x15, x3        ; x15 += argout area
+    lsr     x15, x15, #4        ; x15 /= 16
+    sub     sp, sp, x15, lsl #4 ; allocate the stack
+
+#else
     PROLOG_SAVE_REG_PAIR d8, d9, -240
     PROLOG_SAVE_REG_PAIR d10, d11, 16
     PROLOG_SAVE_REG_PAIR d12, d13, 32
@@ -91,6 +166,7 @@
     add     x15, x15, x3        ; x15 += argout area = same stack allocation as original function
     lsr     x15, x15, #4        ; x15 /= 16
     sub     sp, sp, x15, lsl #4 ; allocate the stack
+#endif
     
 .endm
 

@@ -126,6 +126,10 @@ ThreadContext::ThreadContext(AllocationPolicyManager * allocationPolicyManager, 
     leafInterpreterFrame(nullptr),
     threadServiceWrapper(nullptr),
     tryHandlerAddrOfReturnAddr(nullptr),
+#if defined(_M_ARM64) && defined(__APPLE__)
+    jitExceptionJmpBuf(nullptr),
+    jitExceptionObject(nullptr),
+#endif
     temporaryArenaAllocatorCount(0),
     temporaryGuestArenaAllocatorCount(0),
     crefSContextForDiag(0),

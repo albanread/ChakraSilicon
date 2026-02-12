@@ -6,9 +6,7 @@
 #include "Backend.h"
 #include "JitAsmTrace.h"
 
-#ifdef ENABLE_CAPSTONE_DISASM
 #include <capstone/capstone.h>
-#endif
 
 // External function declaration
 extern "C" bool IsTraceJitAsmEnabled();
@@ -35,10 +33,8 @@ JitAsmTracer::JitAsmTracer()
     , m_basicBlocks(nullptr)
     , m_basicBlockCapacity(128)
     , m_registerCount(0)
-#ifdef ENABLE_CAPSTONE_DISASM
     , m_capstoneHandle(0)
     , m_capstoneInitialized(false)
-#endif
 {
     // Allocate instruction buffer
     m_instructions = (InstructionInfo*)malloc(m_instructionCapacity * sizeof(InstructionInfo));
@@ -47,10 +43,8 @@ JitAsmTracer::JitAsmTracer()
     // Initialize register stats
     memset(m_registerStats, 0, sizeof(m_registerStats));
     
-    // Initialize Capstone if available
-#ifdef ENABLE_CAPSTONE_DISASM
+    // Initialize Capstone
     InitializeCapstone();
-#endif
 }
 
 JitAsmTracer::~JitAsmTracer()
@@ -66,9 +60,7 @@ JitAsmTracer::~JitAsmTracer()
         free(m_basicBlocks);
     }
     
-#ifdef ENABLE_CAPSTONE_DISASM
     ShutdownCapstone();
-#endif
 }
 
 //-------------------------------------------------------------------------------------------------------
@@ -93,13 +85,11 @@ void JitAsmTracer::TraceFunction(Func* func, void* codeAddress, size_t codeSize)
     PrintFunctionHeader(functionName, codeAddress, codeSize);
     
     // Disassemble and analyze the code
-#ifdef ENABLE_CAPSTONE_DISASM
     if (m_capstoneInitialized)
     {
         DisassembleCode(codeAddress, codeSize, functionName);
     }
     else
-#endif
     {
         // Fallback: basic hex dump
         WriteOutput("Capstone disassembler not available - showing hex dump:\n");
@@ -136,7 +126,6 @@ void JitAsmTracer::TraceFunction(Func* func, void* codeAddress, size_t codeSize)
 //-------------------------------------------------------------------------------------------------------
 bool JitAsmTracer::InitializeCapstone()
 {
-#ifdef ENABLE_CAPSTONE_DISASM
     // Determine architecture and mode based on build target
     cs_arch arch;
     cs_mode mode;
@@ -147,7 +136,7 @@ bool JitAsmTracer::InitializeCapstone()
     mode = CS_MODE_64;
 #elif defined(_M_ARM64) || defined(__aarch64__) || defined(__arm64__)
     // ARM64 architecture (including Apple Silicon)
-    arch = CS_ARCH_ARM64;
+    arch = CS_ARCH_AARCH64;
     mode = CS_MODE_ARM;
 #elif defined(_M_IX86) || defined(__i386__)
     // x86 32-bit architecture
@@ -175,25 +164,20 @@ bool JitAsmTracer::InitializeCapstone()
         m_capstoneInitialized = true;
         return true;
     }
-#endif
-    
     return false;
 }
 
 void JitAsmTracer::ShutdownCapstone()
 {
-#ifdef ENABLE_CAPSTONE_DISASM
     if (m_capstoneInitialized)
     {
         cs_close(&m_capstoneHandle);
         m_capstoneInitialized = false;
     }
-#endif
 }
 
 bool JitAsmTracer::DisassembleCode(void* codeAddress, size_t codeSize, const char* functionName)
 {
-#ifdef ENABLE_CAPSTONE_DISASM
     if (!m_capstoneInitialized)
     {
         return false;
@@ -239,9 +223,6 @@ bool JitAsmTracer::DisassembleCode(void* codeAddress, size_t codeSize, const cha
     // Free Capstone memory
     cs_free(instructions, count);
     return true;
-#else
-    return false;
-#endif
 }
 
 //-------------------------------------------------------------------------------------------------------
@@ -249,7 +230,6 @@ bool JitAsmTracer::DisassembleCode(void* codeAddress, size_t codeSize, const cha
 //-------------------------------------------------------------------------------------------------------
 void JitAsmTracer::AnalyzeInstruction(const cs_insn* insn, InstructionInfo& info)
 {
-#ifdef ENABLE_CAPSTONE_DISASM
     // Basic information
     info.address = insn->address;
     info.size = insn->size;
@@ -332,7 +312,6 @@ void JitAsmTracer::AnalyzeInstruction(const cs_insn* insn, InstructionInfo& info
         info.regReadCount = 0;
         info.regWriteCount = 0;
     }
-#endif
 }
 
 void JitAsmTracer::AnalyzeControlFlow(const InstructionInfo* instructions, size_t count)

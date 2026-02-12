@@ -7,12 +7,7 @@
 
 #include "Backend.h"
 
-#ifdef ENABLE_CAPSTONE_DISASM
 #include <capstone/capstone.h>
-#else
-// Forward declaration when Capstone is not available
-struct cs_insn;
-#endif
 
 namespace Js
 {
@@ -53,7 +48,7 @@ public:
     static void SetVerbosity(int level);
 
 private:
-    // Disassembly engine
+    // Disassembly engine (always available)
     bool InitializeCapstone();
     void ShutdownCapstone();
     bool DisassembleCode(void* codeAddress, size_t codeSize, const char* functionName);
@@ -122,10 +117,8 @@ private:
     
 private:
     // Capstone disassembler handle
-#ifdef ENABLE_CAPSTONE_DISASM
     csh m_capstoneHandle;
     bool m_capstoneInitialized;
-#endif
     
     // Configuration
     static bool s_enabled;

@@ -10,7 +10,7 @@
 extern "C" void __register_frame(const void* ehframe);
 extern "C" void __deregister_frame(const void* ehframe);
 
-#if defined(_AMD64_) && !defined(DISABLE_JIT)
+#if (defined(_AMD64_) || defined(_M_ARM64)) && !defined(DISABLE_JIT)
 #if defined(__APPLE__) // no multi fde support
 #ifndef __IOS__
 typedef void(*mac_fde_reg_op)(const void*addr);
@@ -21,13 +21,10 @@ void mac_fde_wrapper(const char *dataStart, mac_fde_reg_op reg_op);
 #define __REGISTER_FRAME(addr)
 #define __DEREGISTER_FRAME(addr)
 #endif // !__IOS__
-#else // multi FDE support
+#else // multi FDE support (Linux)
 #define __REGISTER_FRAME(addr) __register_frame(addr)
 #define __DEREGISTER_FRAME(addr) __deregister_frame(addr)
 #endif // __APPLE__
-#elif defined(_M_ARM64) // _AMD64_ && !DISABLE_JIT
-#define __REGISTER_FRAME(addr) __register_frame(addr)
-#define __DEREGISTER_FRAME(addr) __deregister_frame(addr)
 #else
 #define __REGISTER_FRAME(addr)
 #define __DEREGISTER_FRAME(addr)

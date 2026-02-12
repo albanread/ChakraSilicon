@@ -673,6 +673,9 @@ public:
     UnwindInfoManager   m_unwindInfo;
     IR::LabelInstr *    m_epilogLabel;
 #endif
+#if defined(_M_ARM64) && !defined(_WIN32)
+    PrologEncoder       m_prologEncoder;
+#endif
     IR::LabelInstr *    m_funcStartLabel;
     IR::LabelInstr *    m_funcEndLabel;
 

@@ -200,17 +200,37 @@ BYTE *PrologEncoder::GetUnwindInfo()
 
 #else  // !_WIN32
 // ----------------------------------------------------------------------------
-//  !_WIN32 x64 unwind uses .eh_frame
+//  !_WIN32 x64/ARM64 unwind uses .eh_frame
 // ----------------------------------------------------------------------------
 
 void PrologEncoder::EncodeSmallProlog(uint8 prologSize, size_t size)
 {
     auto fde = ehFrame.GetFDE();
 
+#if defined(_M_X64)
     // prolog: push rbp
     fde->cfi_advance_loc(1);                    // DW_CFA_advance_loc: 1
     fde->cfi_def_cfa_offset(MachPtr * 2);       // DW_CFA_def_cfa_offset: 16
     fde->cfi_offset(GetDwarfRegNum(LowererMDArch::GetRegFramePointer()), 2); // DW_CFA_offset: r6 (rbp) at cfa-16
+#elif defined(_M_ARM64)
+    // ARM64 small prolog:
+    //   stp fp, lr, [sp, #-16]!   (4 bytes)
+    //   mov fp, sp                (4 bytes)
+    //
+    // After stp: SP decremented by 16, CFA = SP + 16
+    //   fp at [SP+0] = CFA-16, lr at [SP+8] = CFA-8
+    // After mov fp, sp: FP = SP, CFA = FP + 16
+
+    // Advance past stp (4 bytes, code_alignment_factor=1)
+    fde->cfi_advance(4);
+    fde->cfi_def_cfa_offset(16);                                // CFA = SP + 16
+    fde->cfi_offset_auto(29, ULEB128(2));                       // FP (x29) at CFA-16 (factored: 16/8=2)
+    fde->cfi_offset_auto(30, ULEB128(1));                       // LR (x30) at CFA-8  (factored: 8/8=1)
+
+    // Advance past mov fp, sp (4 bytes)
+    fde->cfi_advance(4);
+    fde->cfi_def_cfa_register(ULEB128(29));                     // CFA = FP + 16 (register changes to FP, offset stays 16)
+#endif
 
     ehFrame.End();
 }
@@ -258,6 +278,8 @@ void PrologEncoder::EncodeInstr(IR::Instr *instr, unsigned __int8 size)
     {
     case UWOP_PUSH_NONVOL:
     {
+#if defined(_M_X64)
+        // x64: PUSH reg grows the stack by one slot
         const uword advance = currentInstrOffset - cfiInstrOffset;
         cfiInstrOffset = currentInstrOffset;
         cfaWordOffset++;
@@ -267,12 +289,83 @@ void PrologEncoder::EncodeInstr(IR::Instr *instr, unsigned __int8 size)
 
         const ubyte reg = PrologEncoderMD::GetNonVolRegToSave(instr) + 1;
         fde->cfi_offset(GetDwarfRegNum(reg), cfaWordOffset);    // DW_CFA_offset: r? at cfa-??
+#elif defined(_M_ARM64)
+        // ARM64: STP reg1, reg2, [sp, #offset]
+        // The stack was already allocated by SUB sp, sp, #N, so cfaWordOffset is already set.
+        // We just record where the registers are saved relative to CFA.
+        const uword advance = currentInstrOffset - cfiInstrOffset;
+        if (advance > 0)
+        {
+            fde->cfi_advance(advance);
+            cfiInstrOffset = currentInstrOffset;
+        }
+
+        // Get the two source register operands and the destination offset
+        IR::Opnd *src1 = instr->GetSrc1();
+        IR::Opnd *src2 = instr->GetSrc2();
+        IR::IndirOpnd *dst = instr->GetDst()->AsIndirOpnd();
+        int32 offsetFromSP = dst->GetOffset();
+
+        Assert(src1 && src1->IsRegOpnd());
+        Assert(src2 && src2->IsRegOpnd());
+
+        RegNum reg1 = src1->AsRegOpnd()->GetReg();
+        RegNum reg2 = src2->AsRegOpnd()->GetReg();
+
+        // Offset from CFA to save location: CFA = SP + cfaWordOffset*8
+        // Register is at SP + offsetFromSP, so at CFA - (cfaWordOffset*8 - offsetFromSP)
+        // In DWARF factored form: factored_offset = (cfaWordOffset*8 - offsetFromSP) / data_alignment
+        // data_alignment = -MachPtr = -8, so factored_offset = (cfaWordOffset*8 - offsetFromSP) / 8
+        Assert((size_t)(cfaWordOffset * MachPtr) >= (size_t)offsetFromSP);
+        size_t cfa_minus_reg1 = cfaWordOffset * MachPtr - offsetFromSP;
+        size_t cfa_minus_reg2 = cfa_minus_reg1 - MachPtr;
+
+        // factored offset for cfi_offset: offset from CFA divided by |data_alignment_factor|
+        // data_alignment_factor = -8, so factored_offset = (CFA - reg_location) / 8
+        Assert(cfa_minus_reg1 % MachPtr == 0);
+        Assert(cfa_minus_reg2 % MachPtr == 0);
+
+        fde->cfi_offset_auto(GetDwarfRegNum(reg1), (ubyte)(cfa_minus_reg1 / MachPtr));
+        fde->cfi_offset_auto(GetDwarfRegNum(reg2), (ubyte)(cfa_minus_reg2 / MachPtr));
+#endif
         break;
     }
 
     case UWOP_SAVE_XMM128:
     {
-        // TODO
+#if defined(_M_ARM64)
+        // ARM64: FSTP d_n, d_n+1, [sp, #offset]
+        // Record where the double registers are saved relative to CFA.
+        const uword advance = currentInstrOffset - cfiInstrOffset;
+        if (advance > 0)
+        {
+            fde->cfi_advance(advance);
+            cfiInstrOffset = currentInstrOffset;
+        }
+
+        IR::Opnd *src1 = instr->GetSrc1();
+        IR::Opnd *src2 = instr->GetSrc2();
+        IR::IndirOpnd *dst = instr->GetDst()->AsIndirOpnd();
+        int32 offsetFromSP = dst->GetOffset();
+
+        Assert(src1 && src1->IsRegOpnd());
+        Assert(src2 && src2->IsRegOpnd());
+
+        RegNum reg1 = src1->AsRegOpnd()->GetReg();
+        RegNum reg2 = src2->AsRegOpnd()->GetReg();
+
+        Assert((size_t)(cfaWordOffset * MachPtr) >= (size_t)offsetFromSP);
+        size_t cfa_minus_reg1 = cfaWordOffset * MachPtr - offsetFromSP;
+        size_t cfa_minus_reg2 = cfa_minus_reg1 - MachRegDouble;
+
+        Assert(cfa_minus_reg1 % MachPtr == 0);
+        Assert(cfa_minus_reg2 % MachPtr == 0);
+
+        fde->cfi_offset_auto(GetDwarfRegNum(reg1), (ubyte)(cfa_minus_reg1 / MachPtr));
+        fde->cfi_offset_auto(GetDwarfRegNum(reg2), (ubyte)(cfa_minus_reg2 / MachPtr));
+#else
+        // x64: TODO
+#endif
         break;
     }
 
@@ -293,6 +386,80 @@ void PrologEncoder::EncodeInstr(IR::Instr *instr, unsigned __int8 size)
         fde->cfi_def_cfa_offset(cfaWordOffset * MachPtr);   // DW_CFA_def_cfa_offset: ??
         break;
     }
+
+#if defined(_M_ARM64)
+    case UWOP_SET_FPREG:
+    {
+        // ADD fp, sp, #offset -> CFA is now FP-based
+        // FP = SP + fpOffset, and CFA was SP + cfaWordOffset*8
+        // So CFA = FP + (cfaWordOffset*8 - fpOffset)
+        size_t fpOffset = PrologEncoderMD::GetFPOffset(instr);
+
+        const uword advance = currentInstrOffset - cfiInstrOffset;
+        if (advance > 0)
+        {
+            fde->cfi_advance(advance);
+            cfiInstrOffset = currentInstrOffset;
+        }
+
+        size_t cfaOffsetFromFP = cfaWordOffset * MachPtr - fpOffset;
+        // Use def_cfa to set both register and offset in one operation
+        fde->cfi_def_cfa(ULEB128(29), ULEB128(cfaOffsetFromFP));   // DW_CFA_def_cfa: r29 (fp) ofs
+        break;
+    }
+
+    case UWOP_SAVE_NONVOL:
+    {
+        // ARM64: STR reg, [sp, #offset] — individual integer register save
+        // Used on Apple Silicon instead of STP for stability with dynamic code.
+        const uword advance = currentInstrOffset - cfiInstrOffset;
+        if (advance > 0)
+        {
+            fde->cfi_advance(advance);
+            cfiInstrOffset = currentInstrOffset;
+        }
+
+        IR::Opnd *src1 = instr->GetSrc1();
+        IR::IndirOpnd *dst = instr->GetDst()->AsIndirOpnd();
+        int32 offsetFromSP = dst->GetOffset();
+
+        Assert(src1 && src1->IsRegOpnd());
+        RegNum reg = src1->AsRegOpnd()->GetReg();
+
+        Assert((size_t)(cfaWordOffset * MachPtr) >= (size_t)offsetFromSP);
+        size_t cfa_minus_reg = cfaWordOffset * MachPtr - offsetFromSP;
+        Assert(cfa_minus_reg % MachPtr == 0);
+
+        fde->cfi_offset_auto(GetDwarfRegNum(reg), (ubyte)(cfa_minus_reg / MachPtr));
+        break;
+    }
+
+    case UWOP_SAVE_XMM128_FAR:
+    {
+        // ARM64: FSTR dreg, [sp, #offset] — individual double register save
+        // Used on Apple Silicon instead of FSTP for stability with dynamic code.
+        const uword advance = currentInstrOffset - cfiInstrOffset;
+        if (advance > 0)
+        {
+            fde->cfi_advance(advance);
+            cfiInstrOffset = currentInstrOffset;
+        }
+
+        IR::Opnd *src1 = instr->GetSrc1();
+        IR::IndirOpnd *dst = instr->GetDst()->AsIndirOpnd();
+        int32 offsetFromSP = dst->GetOffset();
+
+        Assert(src1 && src1->IsRegOpnd());
+        RegNum reg = src1->AsRegOpnd()->GetReg();
+
+        Assert((size_t)(cfaWordOffset * MachPtr) >= (size_t)offsetFromSP);
+        size_t cfa_minus_reg = cfaWordOffset * MachPtr - offsetFromSP;
+        Assert(cfa_minus_reg % MachPtr == 0);
+
+        fde->cfi_offset_auto(GetDwarfRegNum(reg), (ubyte)(cfa_minus_reg / MachPtr));
+        break;
+    }
+#endif
 
     case UWOP_IGNORE:
     {

@@ -17,7 +17,9 @@ ENTRY1   (  advance_loc1,   0x02,           ubyte               )
 ENTRY1   (  advance_loc2,   0x03,           uhalf               )
 ENTRY1   (  advance_loc4,   0x04,           uword               )
 
+ENTRY2   (  offset_extended,0x05,           ULEB128,    ULEB128 )
 ENTRY2   (  def_cfa,        0x0c,           ULEB128,    ULEB128 )
+ENTRY1   (  def_cfa_register, 0x0d,         ULEB128             )
 ENTRY1   (  def_cfa_offset, 0x0e,           ULEB128             )
 
 ENTRY    (  nop,            0                                   )

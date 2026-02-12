@@ -82,7 +82,7 @@ Encoder::Encode()
     IR::PragmaInstr* pragmaInstr = nullptr;
     uint32 pragmaOffsetInBuffer = 0;
 
-#ifdef _M_X64
+#if defined(_M_X64) || (defined(_M_ARM64) && !defined(_WIN32))
     bool inProlog = false;
 #endif
     bool isCallInstr = false;
@@ -115,7 +115,7 @@ Encoder::Encode()
             {
                 switch (instr->m_opcode)
                 {
-#ifdef _M_X64
+#if defined(_M_X64) || (defined(_M_ARM64) && !defined(_WIN32))
                 case Js::OpCode::PrologStart:
                     m_func->m_prologEncoder.Begin(m_pc - m_encodeBuffer);
                     inProlog = true;
@@ -238,9 +238,11 @@ Encoder::Encode()
                 Output::Flush();
             }
 #endif
-#ifdef _M_X64
-            if (inProlog)
+#if defined(_M_X64) || (defined(_M_ARM64) && !defined(_WIN32))
+            if (inProlog && count > 0)
+            {
                 m_func->m_prologEncoder.EncodeInstr(instr, count & 0xFF);
+            }
 #endif
             m_pc += count;
 
@@ -498,7 +500,11 @@ Encoder::Encode()
     xdataSize = (ushort)m_func->m_prologEncoder.SizeOfUnwindInfo();
 #elif defined(_M_ARM64)
     pdataCount = 1;
+#ifndef _WIN32
+    xdataSize = (ushort)m_func->m_prologEncoder.SizeOfUnwindInfo();
+#else
     xdataSize = XDATA_SIZE;
+#endif
 #elif defined(_M_ARM)
     pdataCount = (ushort)m_func->m_unwindInfo.GetPDataCount(codeSize);
     xdataSize = (UnwindInfoManager::MaxXdataBytes + 3) * pdataCount;
@@ -556,7 +562,7 @@ Encoder::Encode()
 #endif
 
 #ifdef TARGET_64
-#ifdef _M_X64
+#if defined(_M_X64) || (defined(_M_ARM64) && !defined(_WIN32))
     PrologEncoder &unwindInfo = m_func->m_prologEncoder;
     unwindInfo.FinalizeUnwindInfo((BYTE*)m_func->GetJITOutput()->GetCodeAddress(), (DWORD)codeSize);
 #else

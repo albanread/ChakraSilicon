@@ -1,0 +1,11 @@
+# Break at thunk generation
+b InterpreterThunkEmitter::EncodeInterpreterThunk
+b FunctionBody::GenerateDynamicInterpreterThunk
+
+# Break at function call entry
+b InterpreterStackFrame::InterpreterThunk
+
+# Run the test
+run examination/early_hang_test.js
+
+# When we hit the breakpoint, examine

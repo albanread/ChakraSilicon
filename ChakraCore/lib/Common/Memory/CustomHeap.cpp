@@ -11,6 +11,10 @@
 #if defined(_M_ARM)
 #include <wchar.h>
 #endif
+#if defined(__APPLE__) && defined(_M_ARM64)
+#include <pthread.h>
+#include <libkern/OSCacheControl.h>
+#endif
 #include "CustomHeap.h"
 
 #if PDATA_ENABLED && defined(_WIN32)
@@ -264,15 +268,21 @@ Allocation* Heap<TAlloc, TPreReservedAlloc>::Alloc(size_t bytes, ushort pdataCou
         }
 
 #if defined(DBG)
-        MEMORY_BASIC_INFORMATION memBasicInfo;
-        size_t resultBytes = VirtualQueryEx(this->processHandle, page->address, &memBasicInfo, sizeof(memBasicInfo));
-        if (resultBytes == 0)
+#if defined(__APPLE__) && defined(_M_ARM64)
+        // Skip VirtualQuery assertion for MAP_JIT pages - the PAL doesn't track them
+        if (!VirtualAllocWrapper::IsMapJitRegion(page->address))
+#endif
         {
-            MemoryOperationLastError::RecordLastError();
-        }
-        else
-        {
-            Assert(memBasicInfo.Protect == PAGE_EXECUTE_READ);
+            MEMORY_BASIC_INFORMATION memBasicInfo;
+            size_t resultBytes = VirtualQueryEx(this->processHandle, page->address, &memBasicInfo, sizeof(memBasicInfo));
+            if (resultBytes == 0)
+            {
+                MemoryOperationLastError::RecordLastError();
+            }
+            else
+            {
+                Assert(memBasicInfo.Protect == PAGE_EXECUTE_READ);
+            }
         }
 #endif
 
@@ -289,17 +299,24 @@ BOOL Heap<TAlloc, TPreReservedAlloc>::ProtectAllocationWithExecuteReadWrite(Allo
 {
     DWORD protectFlags = 0;
 
+#if defined(__APPLE__) && defined(_M_ARM64)
+    // On Apple Silicon with MAP_JIT pages, W^X is managed per-thread:
+    // - Background JIT thread is permanently in write mode (set in StaticThreadProc)
+    // - Main thread is permanently in execute mode (the default)
+    // No need to toggle pthread_jit_write_protect_np here. Just skip mprotect.
+    if (VirtualAllocWrapper::IsMapJitRegion(allocation->address))
+    {
+        return TRUE;
+    }
+#endif
+
     if (GlobalSecurityPolicy::IsCFGEnabled())
     {
         protectFlags = PAGE_EXECUTE_RW_TARGETS_NO_UPDATE;
     }
     else
     {
-        #if defined(__APPLE__) && defined(_M_ARM64)
-        protectFlags = PAGE_READWRITE; // PAGE_EXECUTE_READWRITE banned on Apple Silicon
-        #else
         protectFlags = PAGE_EXECUTE_READWRITE;
-        #endif
     }
     return this->ProtectAllocation(allocation, protectFlags, PAGE_EXECUTE_READ, addressInPage);
 }
@@ -308,6 +325,18 @@ template<typename TAlloc, typename TPreReservedAlloc>
 BOOL Heap<TAlloc, TPreReservedAlloc>::ProtectAllocationWithExecuteReadOnly(_In_ Allocation *allocation, __in_opt char* addressInPage)
 {
     DWORD protectFlags = 0;
+
+#if defined(__APPLE__) && defined(_M_ARM64)
+    // On Apple Silicon with MAP_JIT pages, W^X is managed per-thread.
+    // Just flush the instruction cache so the main (execute) thread sees
+    // the new code. Don't toggle pthread_jit_write_protect_np.
+    if (VirtualAllocWrapper::IsMapJitRegion(allocation->address))
+    {
+        sys_icache_invalidate(allocation->address, allocation->size);
+        return TRUE;
+    }
+#endif
+
     if (GlobalSecurityPolicy::IsCFGEnabled())
     {
         protectFlags = PAGE_EXECUTE_RO_TARGETS_NO_UPDATE;
@@ -316,11 +345,7 @@ BOOL Heap<TAlloc, TPreReservedAlloc>::ProtectAllocationWithExecuteReadOnly(_In_ 
     {
         protectFlags = PAGE_EXECUTE_READ;
     }
-    #if defined(__APPLE__) && defined(_M_ARM64)
-    return this->ProtectAllocation(allocation, protectFlags, PAGE_READWRITE, addressInPage); // PAGE_EXECUTE_READWRITE banned on Apple Silicon
-    #else
     return this->ProtectAllocation(allocation, protectFlags, PAGE_EXECUTE_READWRITE, addressInPage);
-    #endif
 }
 
 template<typename TAlloc, typename TPreReservedAlloc>
@@ -420,7 +445,14 @@ Allocation* Heap<TAlloc, TPreReservedAlloc>::AllocLargeObject(size_t bytes, usho
         {
             return nullptr;
         }
+        // On Apple Silicon with MAP_JIT, the background JIT thread is permanently in write mode.
         FillDebugBreak((BYTE*)localAddr, pages*AutoSystemInfo::PageSize);
+#if defined(__APPLE__) && defined(_M_ARM64)
+        if (VirtualAllocWrapper::IsMapJitRegion(address))
+        {
+            sys_icache_invalidate(localAddr, pages*AutoSystemInfo::PageSize);
+        }
+#endif
         this->codePageAllocators->FreeLocal(localAddr, segment);
 
         if (this->processHandle == GetCurrentProcess())
@@ -434,7 +466,13 @@ Allocation* Heap<TAlloc, TPreReservedAlloc>::AllocLargeObject(size_t bytes, usho
             {
                 protectFlags = PAGE_EXECUTE_READ;
             }
-            this->codePageAllocators->ProtectPages(address, pages, segment, protectFlags /*dwVirtualProtectFlags*/, PAGE_READWRITE /*desiredOldProtectFlags*/);
+#if defined(__APPLE__) && defined(_M_ARM64)
+            // For MAP_JIT pages, skip mprotect - already handled by pthread_jit_write_protect_np
+            if (!VirtualAllocWrapper::IsMapJitRegion(address))
+#endif
+            {
+                this->codePageAllocators->ProtectPages(address, pages, segment, protectFlags /*dwVirtualProtectFlags*/, PAGE_READWRITE /*desiredOldProtectFlags*/);
+            }
         }
 #if PDATA_ENABLED
         if(pdataCount > 0)
@@ -449,15 +487,20 @@ Allocation* Heap<TAlloc, TPreReservedAlloc>::AllocLargeObject(size_t bytes, usho
     }
 
 #if defined(DBG)
-    MEMORY_BASIC_INFORMATION memBasicInfo;
-    size_t resultBytes = VirtualQueryEx(this->processHandle, address, &memBasicInfo, sizeof(memBasicInfo));
-    if (resultBytes == 0)
+#if defined(__APPLE__) && defined(_M_ARM64)
+    if (!VirtualAllocWrapper::IsMapJitRegion(address))
+#endif
     {
-        MemoryOperationLastError::RecordLastError();
-    }
-    else
-    {
-        Assert(memBasicInfo.Protect == PAGE_EXECUTE_READ);
+        MEMORY_BASIC_INFORMATION memBasicInfo;
+        size_t resultBytes = VirtualQueryEx(this->processHandle, address, &memBasicInfo, sizeof(memBasicInfo));
+        if (resultBytes == 0)
+        {
+            MemoryOperationLastError::RecordLastError();
+        }
+        else
+        {
+            Assert(memBasicInfo.Protect == PAGE_EXECUTE_READ);
+        }
     }
 #endif
 
@@ -689,7 +732,15 @@ Page* Heap<TAlloc, TPreReservedAlloc>::AllocNewPage(BucketId bucket, bool canAll
     {
         return nullptr;
     }
+    // On Apple Silicon with MAP_JIT, the background JIT thread is permanently in write mode.
+    // No need to toggle pthread_jit_write_protect_np before/after writes.
     FillDebugBreak((BYTE*)localAddr, AutoSystemInfo::PageSize);
+#if defined(__APPLE__) && defined(_M_ARM64)
+    if (VirtualAllocWrapper::IsMapJitRegion(address))
+    {
+        sys_icache_invalidate(localAddr, AutoSystemInfo::PageSize);
+    }
+#endif
     this->codePageAllocators->FreeLocal(localAddr, pageSegment);
 
     DWORD protectFlags = 0;
@@ -703,8 +754,15 @@ Page* Heap<TAlloc, TPreReservedAlloc>::AllocNewPage(BucketId bucket, bool canAll
         protectFlags = PAGE_EXECUTE_READ;
     }
 
-    //Change the protection of the page to Read-Only Execute, before adding it to the bucket list.
-    this->codePageAllocators->ProtectPages(address, 1, pageSegment, protectFlags, PAGE_READWRITE);
+#if defined(__APPLE__) && defined(_M_ARM64)
+    // For MAP_JIT pages, skip mprotect - the page is already RWX via MAP_JIT
+    // and we use pthread_jit_write_protect_np for per-thread W^X toggling
+    if (!VirtualAllocWrapper::IsMapJitRegion(address))
+#endif
+    {
+        //Change the protection of the page to Read-Only Execute, before adding it to the bucket list.
+        this->codePageAllocators->ProtectPages(address, 1, pageSegment, protectFlags, PAGE_READWRITE);
+    }
 
     // Switch to allocating on a list of pages so we can do leak tracking later
     VerboseHeapTrace(_u("Allocing new page in bucket %d\n"), bucket);
@@ -903,7 +961,13 @@ bool Heap<TAlloc, TPreReservedAlloc>::FreeAllocation(Allocation* object)
             protectFlags = PAGE_EXECUTE_READ;
         }
 
-        this->codePageAllocators->ProtectPages(page->address, 1, segment, protectFlags, PAGE_EXECUTE_READWRITE);
+#if defined(__APPLE__) && defined(_M_ARM64)
+        // For MAP_JIT pages, skip mprotect - handled by pthread_jit_write_protect_np
+        if (!VirtualAllocWrapper::IsMapJitRegion(page->address))
+#endif
+        {
+            this->codePageAllocators->ProtectPages(page->address, 1, segment, protectFlags, PAGE_EXECUTE_READWRITE);
+        }
 
         return true;
     }
@@ -918,7 +982,14 @@ void Heap<TAlloc, TPreReservedAlloc>::FreeAllocationHelper(Allocation* object, B
     char* localAddr = this->codePageAllocators->AllocLocal(object->address, object->size, page->segment);
     if (localAddr)
     {
+        // On Apple Silicon with MAP_JIT, the calling thread manages its own write mode.
         FillDebugBreak((BYTE*)localAddr, object->size);
+#if defined(__APPLE__) && defined(_M_ARM64)
+        if (VirtualAllocWrapper::IsMapJitRegion(page->address))
+        {
+            sys_icache_invalidate(localAddr, object->size);
+        }
+#endif
         this->codePageAllocators->FreeLocal(localAddr, page->segment);
     }
     else

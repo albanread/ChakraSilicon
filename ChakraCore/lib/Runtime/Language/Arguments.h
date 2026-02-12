@@ -21,6 +21,21 @@
     va_start(_vl, callInfo);                                        \
     Js::Var* va = (Js::Var*)_vl.__stack + 2;                        \
     Assert(*reinterpret_cast<Js::CallInfo*>(va - 1) == callInfo)
+#elif defined(_ARM64_) && defined(__APPLE__)
+// DarwinPCS (Apple ARM64 ABI):
+// On Apple ARM64, variadic args are always passed on the stack.
+// arm64_CallFunction (the trampoline) builds a stack frame:
+//   [function, callInfo, arg0, arg1, ...]
+// and then calls the entry point with args in x0-x7.
+// In the callee, va_start points at the caller's stack-passed args,
+// which is the start of that frame: [function, callInfo, arg0, ...].
+// We skip 2 slots (function + callInfo) to get to the JS arguments.
+// va_list on Apple ARM64 is a simple char* (not a struct like Linux).
+#define DECLARE_ARGS_VARARRAY(va, ...)                              \
+    va_list _vl;                                                    \
+    va_start(_vl, callInfo);                                        \
+    Js::Var* va = (Js::Var*)_vl + 2;                                \
+    Assert(*reinterpret_cast<Js::CallInfo*>(va - 1) == callInfo)
 #else
 // We use a custom calling convention to invoke JavascriptMethod based on
 // System ABI. At entry of JavascriptMethod the stack layout is:
@@ -99,9 +114,68 @@ inline int _count_args(const T1&, const T2&, const T3&, const T4&, const T5&, Js
 #define CALL_ENTRYPOINT_NOASSERT(entryPoint, function, callInfo, ...) \
     entryPoint(function, callInfo, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, \
                function, callInfo, ##__VA_ARGS__)
+#elif defined(__APPLE__)
+// macOS ARM64 (DarwinPCS): variadic args are ALWAYS passed on the stack, never in
+// registers x2-x7. But JIT-compiled code expects its parameters in x0-x7 (homed to
+// the stack frame in the prologue). To bridge this gap, we cast the variadic
+// JavascriptMethod pointer to a non-variadic function type. Non-variadic calls on
+// DarwinPCS pass the first 8 args in x0-x7 normally, which is what the JIT expects.
+//
+// We provide overloaded macros for 0..6 extra args (beyond function & callInfo).
+// Each places the real args into x0-x7 (registers) AND duplicates them onto the
+// stack (positions 9-16) so the stack walker sees [function, callInfo, args...].
+//
+// We use uintptr_t for all params in the non-variadic type to avoid issues with
+// casting struct CallInfo to void*. All args are 8-byte register-sized values
+// on ARM64 so this is ABI-compatible.
+typedef Js::Var (*_JsMethodNV16)(uintptr_t, uintptr_t, uintptr_t, uintptr_t, uintptr_t, uintptr_t, uintptr_t, uintptr_t,
+                                  uintptr_t, uintptr_t, uintptr_t, uintptr_t, uintptr_t, uintptr_t, uintptr_t, uintptr_t);
+// Extended type for 7+ extra args (17 total params)
+typedef Js::Var (*_JsMethodNV18)(uintptr_t, uintptr_t, uintptr_t, uintptr_t, uintptr_t, uintptr_t, uintptr_t, uintptr_t,
+                                  uintptr_t, uintptr_t, uintptr_t, uintptr_t, uintptr_t, uintptr_t, uintptr_t, uintptr_t,
+                                  uintptr_t, uintptr_t);
+
+// Helper to bit-cast CallInfo (8-byte struct) to uintptr_t for register passing
+static inline uintptr_t _ci2u(Js::CallInfo ci) { uintptr_t r; memcpy(&r, &ci, sizeof(r)); return r; }
+
+#define _CALL_EP_0(ep, fn, ci) \
+    ((_JsMethodNV16)(ep))((uintptr_t)(fn), _ci2u(ci), \
+    0, 0, 0, 0, 0, 0, \
+    (uintptr_t)(fn), _ci2u(ci), 0, 0, 0, 0, 0, 0)
+#define _CALL_EP_1(ep, fn, ci, a1) \
+    ((_JsMethodNV16)(ep))((uintptr_t)(fn), _ci2u(ci), \
+    (uintptr_t)(a1), 0, 0, 0, 0, 0, \
+    (uintptr_t)(fn), _ci2u(ci), (uintptr_t)(a1), 0, 0, 0, 0, 0)
+#define _CALL_EP_2(ep, fn, ci, a1, a2) \
+    ((_JsMethodNV16)(ep))((uintptr_t)(fn), _ci2u(ci), \
+    (uintptr_t)(a1), (uintptr_t)(a2), 0, 0, 0, 0, \
+    (uintptr_t)(fn), _ci2u(ci), (uintptr_t)(a1), (uintptr_t)(a2), 0, 0, 0, 0)
+#define _CALL_EP_3(ep, fn, ci, a1, a2, a3) \
+    ((_JsMethodNV16)(ep))((uintptr_t)(fn), _ci2u(ci), \
+    (uintptr_t)(a1), (uintptr_t)(a2), (uintptr_t)(a3), 0, 0, 0, \
+    (uintptr_t)(fn), _ci2u(ci), (uintptr_t)(a1), (uintptr_t)(a2), (uintptr_t)(a3), 0, 0, 0)
+#define _CALL_EP_4(ep, fn, ci, a1, a2, a3, a4) \
+    ((_JsMethodNV16)(ep))((uintptr_t)(fn), _ci2u(ci), \
+    (uintptr_t)(a1), (uintptr_t)(a2), (uintptr_t)(a3), (uintptr_t)(a4), 0, 0, \
+    (uintptr_t)(fn), _ci2u(ci), (uintptr_t)(a1), (uintptr_t)(a2), (uintptr_t)(a3), (uintptr_t)(a4), 0, 0)
+#define _CALL_EP_5(ep, fn, ci, a1, a2, a3, a4, a5) \
+    ((_JsMethodNV16)(ep))((uintptr_t)(fn), _ci2u(ci), \
+    (uintptr_t)(a1), (uintptr_t)(a2), (uintptr_t)(a3), (uintptr_t)(a4), (uintptr_t)(a5), 0, \
+    (uintptr_t)(fn), _ci2u(ci), (uintptr_t)(a1), (uintptr_t)(a2), (uintptr_t)(a3), (uintptr_t)(a4), (uintptr_t)(a5), 0)
+#define _CALL_EP_6(ep, fn, ci, a1, a2, a3, a4, a5, a6) \
+    ((_JsMethodNV16)(ep))((uintptr_t)(fn), _ci2u(ci), \
+    (uintptr_t)(a1), (uintptr_t)(a2), (uintptr_t)(a3), (uintptr_t)(a4), (uintptr_t)(a5), (uintptr_t)(a6), \
+    (uintptr_t)(fn), _ci2u(ci), (uintptr_t)(a1), (uintptr_t)(a2), (uintptr_t)(a3), (uintptr_t)(a4), (uintptr_t)(a5), (uintptr_t)(a6))
+#define _CALL_EP_7(ep, fn, ci, a1, a2, a3, a4, a5, a6, a7) \
+    ((_JsMethodNV18)(ep))((uintptr_t)(fn), _ci2u(ci), \
+    (uintptr_t)(a1), (uintptr_t)(a2), (uintptr_t)(a3), (uintptr_t)(a4), (uintptr_t)(a5), (uintptr_t)(a6), \
+    (uintptr_t)(fn), _ci2u(ci), (uintptr_t)(a1), (uintptr_t)(a2), (uintptr_t)(a3), (uintptr_t)(a4), (uintptr_t)(a5), (uintptr_t)(a6), (uintptr_t)(a7), 0)
+// Argument counting: select the right _CALL_EP_N macro based on number of variadic args
+#define _CALL_EP_SELECT(_0,_1,_2,_3,_4,_5,_6,_7,NAME,...) NAME
+#define CALL_ENTRYPOINT_NOASSERT(entryPoint, function, callInfo, ...) \
+    _CALL_EP_SELECT(unused, ##__VA_ARGS__, _CALL_EP_7, _CALL_EP_6, _CALL_EP_5, _CALL_EP_4, _CALL_EP_3, _CALL_EP_2, _CALL_EP_1, _CALL_EP_0)(entryPoint, function, callInfo, ##__VA_ARGS__)
 #else
-// macOS has own bespoke vararg cc (DarwinPCS), varargs always passed via stack.
-// Duplicate function/callInfo so they are pushed onto stack as part of varargs.
+// Other ARM64 platforms (generic fallback)
 #define CALL_ENTRYPOINT_NOASSERT(entryPoint, function, callInfo, ...) \
     entryPoint(function, callInfo, function, callInfo, ##__VA_ARGS__)
 #endif

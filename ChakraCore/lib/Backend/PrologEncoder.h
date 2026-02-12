@@ -12,11 +12,14 @@
 #define TO_UINT32(x)  (x & 0xFFFFFFFF)
 
 enum UnwindOp : unsigned __int8 {
-    UWOP_IGNORE      =  (unsigned __int8)-1,
-    UWOP_PUSH_NONVOL =  0,
-    UWOP_ALLOC_LARGE =  1,
-    UWOP_ALLOC_SMALL =  2,
-    UWOP_SAVE_XMM128 =  8
+    UWOP_IGNORE          =  (unsigned __int8)-1,
+    UWOP_PUSH_NONVOL     =  0,    // STP reg pair save (paired, used on Windows)
+    UWOP_ALLOC_LARGE     =  1,
+    UWOP_ALLOC_SMALL     =  2,
+    UWOP_SET_FPREG       =  3,    // ADD fp, sp, #offset -> set frame pointer (ARM64)
+    UWOP_SAVE_NONVOL     =  4,    // STR single integer register save (ARM64 non-Windows)
+    UWOP_SAVE_XMM128     =  8,    // FSTP double pair save (paired)
+    UWOP_SAVE_XMM128_FAR =  9     // FSTR single double register save (ARM64 non-Windows)
 };
 
 #ifdef _WIN32
@@ -177,7 +180,10 @@ class PrologEncoder
 {
 public:
     static const int SMALL_EHFRAME_SIZE = 0x40;
-    static const int JIT_EHFRAME_SIZE = 0x80;
+    // Buffer size for JIT .eh_frame data. On Apple Silicon we use individual
+    // STR/FSTR instead of STP/FSTP which doubles the number of CFI directives,
+    // so we need more space than the original 0x80.
+    static const int JIT_EHFRAME_SIZE = 0x100;
 
 private:
     EhFrame ehFrame;
@@ -191,7 +197,12 @@ private:
 public:
     PrologEncoder()
         :ehFrame(buffer, JIT_EHFRAME_SIZE),
-          cfiInstrOffset(0), currentInstrOffset(0), cfaWordOffset(1)
+          cfiInstrOffset(0), currentInstrOffset(0),
+#if defined(_M_X64)
+          cfaWordOffset(1) // x64: CFA starts at RSP+8 (return address pushed by CALL)
+#elif defined(_M_ARM64)
+          cfaWordOffset(0) // ARM64: CFA starts at SP+0 (no implicit push)
+#endif
     {}
 
     void RecordNonVolRegSave() {}

@@ -28,6 +28,13 @@ public:
     BOOL    FreeLocal(LPVOID lpAddress) { return true; }
     bool    GetFileInfo(LPVOID address, HANDLE* fileHandle, PVOID* baseAddress) { return true; }
 
+#if defined(__APPLE__) && defined(_M_ARM64)
+    // MAP_JIT region tracking for Apple Silicon W^X support
+    static void RegisterMapJitRegion(void* address, ::size_t size);
+    static void UnregisterMapJitRegion(void* address);
+    static bool IsMapJitRegion(void* address);
+#endif
+
     static VirtualAllocWrapper Instance;  // single instance
 private:
     VirtualAllocWrapper() {}

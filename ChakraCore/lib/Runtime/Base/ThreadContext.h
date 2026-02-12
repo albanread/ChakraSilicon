@@ -5,6 +5,10 @@
 //-------------------------------------------------------------------------------------------------------
 #pragma once
 
+#if defined(_M_ARM64) && defined(__APPLE__)
+#include <csetjmp>
+#endif
+
 namespace Js
 {
     class ScriptContext;
@@ -670,6 +674,15 @@ private:
     uint functionCount;
     uint sourceInfoCount;
     void * tryHandlerAddrOfReturnAddr;
+
+#if defined(_M_ARM64) && defined(__APPLE__)
+    // setjmp/longjmp-based exception handling for Apple ARM64 JIT code.
+    // Apple's compact unwind + dynamic DWARF .eh_frame interaction is broken,
+    // so we bypass C++ exceptions for the JIT try/catch path entirely.
+    jmp_buf * jitExceptionJmpBuf;               // active setjmp target (nullptr if none)
+    Js::JavascriptExceptionObject * jitExceptionObject; // exception object set before longjmp
+#endif
+
     enum RedeferralState
     {
         InitialRedeferralState,
@@ -1243,6 +1256,13 @@ public:
 
     void * GetTryHandlerAddrOfReturnAddr() { return this->tryHandlerAddrOfReturnAddr; }
     void SetTryHandlerAddrOfReturnAddr(void * addrOfReturnAddr) { this->tryHandlerAddrOfReturnAddr = addrOfReturnAddr; }
+
+#if defined(_M_ARM64) && defined(__APPLE__)
+    jmp_buf * GetJitExceptionJmpBuf() { return this->jitExceptionJmpBuf; }
+    void SetJitExceptionJmpBuf(jmp_buf * buf) { this->jitExceptionJmpBuf = buf; }
+    Js::JavascriptExceptionObject * GetJitExceptionObject() { return this->jitExceptionObject; }
+    void SetJitExceptionObject(Js::JavascriptExceptionObject * obj) { this->jitExceptionObject = obj; }
+#endif
 
     template <bool leaveForHost>
     void LeaveScriptStart(void *);
