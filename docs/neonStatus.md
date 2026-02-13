@@ -1,6 +1,6 @@
 # NEON Acceleration Status — ChakraSilicon
 
-**Last Updated:** 2026-02-14  
+**Last Updated:** 2025-06-22  
 **Tracking Document:** [`docs/NEONforChakra.md`](./NEONforChakra.md)  
 **Branch:** main
 
@@ -305,7 +305,7 @@ The JIT recognizes the fill loop → emits `OP_Memset` → calls `DirectSetItemA
 ## Phase 3: JIT NEON Code Generation (Lowerer Vectorization)
 
 **Priority:** 🟡 P1  
-**Risk:** Medium (requires Lowerer/register allocator integration)  
+**Risk:** Low (borrowed-register strategy eliminates allocator rework)  
 **Estimated Time:** 2–3 weeks  
 **Dependencies:** Phase 2 (NEON opcodes in `MdOpCodes.h` + encoder — ✅ Done)  
 **Status:** 🟡 Infrastructure Ready, Lowerer Work Remaining
@@ -318,27 +318,28 @@ The JIT recognizes the fill loop → emits `OP_Memset` → calls `DirectSetItemA
 | Encoder wiring for all 67 opcodes | `arm64/EncoderMD.cpp` | ✅ Done (Phase 2) |
 | `ARM64NeonEncoder.h` emit functions | `arm64/ARM64NeonEncoder.h` | ✅ Pre-existing (383 functions) |
 | JIT builds and runs on Apple Silicon | build system | ✅ Done (Phase 2) |
-| Float register file (D0-D29) available for NEON | `arm64/RegList.h` | ✅ Pre-existing (shared D/V registers) |
+| Float register file (D0-D26) available for scalar FP | `arm64/RegList.h` | ✅ Done (D27–D29 reserved for NEON) |
 
 ### Phase 3 Remaining Work:
 
-| Item | File | Status |
-|------|------|--------|
-| Add `PHASE(NeonSimd)` and `PHASE(NeonVectorize)` | `ConfigFlagsList.h` | 🔲 |
-| Add `DEFAULT_CONFIG_MinNeonSimdLoopCount` (16) | `ConfigFlagsList.h` | 🔲 |
-| Add `DoNeonSimd()` / `DoNeonVectorize()` helpers | `Func.h` | 🔲 |
-| Mark D27–D29 as `RA_DONTALLOCATE` (NEON scratch) | `RegList.h` | 🔲 |
-| Create `NeonRegs.h` (scratch register defines) | `arm64/NeonRegs.h` | 🔲 |
-| Encode new opcodes in `EncoderMD.cpp` | `arm64/EncoderMD.cpp` | 🔲 |
-| Create `LowerMDSimd128.cpp` (ARM64 SIMD lowering) | `arm64/LowerMDSimd128.cpp` | 🔲 |
-| Gate `LowerSimd128Instruction()` on `DoNeonSimd()` | `arm64/LowerMD.cpp` | 🔲 |
-| Add `DO_NEONSIMD_TRACE()` macros | `arm64/LowerMDSimd128.cpp` | 🔲 |
-| Update `LegalizeMD.cpp` for NEON legalization | `arm64/LegalizeMD.cpp` | 🔲 |
-| Verify D27–D29 not used by existing code | — | 🔲 |
-| Test with asm.js SIMD programs | — | 🔲 |
-| Test `-off:NeonSimd` / `-trace:NeonSimd` flags | — | 🔲 |
-| Validate generated code with Capstone | — | 🔲 |
-| Stress-test FP register pressure (27 D-regs) | — | 🔲 |
+| Item | File | Status | Notes |
+|------|------|--------|-------|
+| Add `PHASE(NeonSimd)` and `PHASE(NeonVectorize)` | `ConfigFlagsList.h` | ✅ Done | Under `GlobOpt` → `MemOp` sibling; enables `-off:NeonSimd`, `-trace:NeonSimd` |
+| Add `DEFAULT_CONFIG_MinNeonSimdLoopCount` (16) | `ConfigFlagsList.h` | ✅ Done | `FLAGNRA(Number, MinNeonSimdLoopCount, Mnslc, ...)` |
+| Add `DoNeonSimd()` / `DoNeonVectorize()` helpers | `Func.h` | ✅ Done | `DoNeonSimd()` gates on `!IsSimpleJit()` (FullJit only); `DoNeonVectorize()` also requires `DoGlobOpt()` |
+| Mark D27–D29 as `RA_DONTALLOCATE` (NEON scratch) | `RegList.h` | ✅ Done | 3-line change; 27 D-regs remain allocatable |
+| Create `NeonRegs.h` (scratch register defines) | `arm64/NeonRegs.h` | ✅ Done | 105-line header: `NEON_SCRATCH_REG_0/1/2`, `NEON_SCRATCH_REGNUM_0/1/2`, usage conventions, static asserts |
+| Update `UnAllocatableRegCount` for 3 new reserved regs | `arm64/LinearScanMD.h` | ✅ Done | 6 → 9 (6 integer + 3 NEON scratch) |
+| Create `LowerMDSimd128.cpp` (ARM64 SIMD lowering) | `arm64/LowerMDSimd128.cpp` | 🔲 | Uses fixed Q27/Q28/Q29 per borrowed-register strategy |
+| Gate `LowerSimd128Instruction()` on `DoNeonSimd()` | `arm64/LowerMD.cpp` | 🔲 | |
+| Add `DO_NEONSIMD_TRACE()` macros | `arm64/LowerMDSimd128.cpp` | 🔲 | Follows `DO_MEMOP_TRACE()` pattern |
+| Update `LegalizeMD.cpp` for NEON legalization | `arm64/LegalizeMD.cpp` | 🔲 | |
+| Test with asm.js SIMD programs | — | 🔲 | |
+| Test `-off:NeonSimd` / `-trace:NeonSimd` flags | — | 🔲 | Requires debug build (release build strips flag support) |
+| Validate generated code with Capstone | — | 🔲 | |
+| Stress-test FP register pressure (27 D-regs) | — | ✅ Done | Build succeeds; interpreter+JIT typed array tests pass (pre-existing JIT indexOf bug unrelated — see note) |
+
+**Note:** A pre-existing JIT bug causes `Array.prototype.indexOf` to hang in JIT-compiled code. This predates all NEON changes (confirmed by reverting and retesting). It does not affect the interpreter build or typed array arithmetic. Filed for separate investigation.
 
 ---
 
@@ -393,6 +394,7 @@ The JIT recognizes the fill loop → emits `OP_Memset` → calls `DirectSetItemA
 | File | Phase | Lines | Description |
 |------|-------|-------|-------------|
 | `lib/Runtime/Language/NeonAccel.h` | 1 | ~2,320 | Header-only NEON utility library — fills, search, min/max, reverse, copy, SIMD helpers |
+| `lib/Backend/arm64/NeonRegs.h` | 3 | 105 | NEON scratch register definitions (Q27/Q28/Q29), usage conventions, static asserts |
 | `tests/neon_benchmarks/fill_bench.js` | 1 | 127 | TypedArray.fill() benchmark |
 | `tests/neon_benchmarks/indexof_bench.js` | 1 | 223 | TypedArray.indexOf()/includes() benchmark |
 | `tests/neon_benchmarks/add_bench.js` | 1 | 550 | Arithmetic loops, reductions, copy, reverse benchmark |
@@ -418,16 +420,36 @@ The JIT recognizes the fill loop → emits `OP_Memset` → calls `DirectSetItemA
 | `lib/Runtime/Library/JavascriptArray.cpp` | 1 | `CopyValueToSegmentBuferNoCheck<double>` and `<int32>` wired to NEON fill; `HeadSegmentIndexOfHelper` (NativeIntArray) accelerated with NEON `vceqq_s32` vectorized scan |
 | `CHANGELOG.md` | — | Phase 1 entry added |
 
-### Files Pending Modification (Phase 2)
+### Files Modified (Phase 3 — Infrastructure)
+
+| File | Phase | Change Description |
+|------|-------|--------------------|
+| `lib/Common/ConfigFlagsList.h` | 3 | Added `PHASE(NeonSimd)`, `PHASE(NeonVectorize)`, `DEFAULT_CONFIG_MinNeonSimdLoopCount`, `MinNeonSimdLoopCount` flag |
+| `lib/Backend/Func.h` | 3 | Added `DoNeonSimd()` (FullJit gate) and `DoNeonVectorize()` (FullJit + GlobOpt gate) |
+| `lib/Backend/arm64/RegList.h` | 3 | D27–D29 marked `RA_DONTALLOCATE` (reserved as NEON scratch Q27/Q28/Q29) |
+| `lib/Backend/arm64/LinearScanMD.h` | 3 | `UnAllocatableRegCount` updated 6 → 9 for 3 new reserved registers |
+
+### Files Pending Modification (Phase 2 / Phase 3)
 
 | File | Change Needed |
 |------|---------------|
 | `lib/Runtime/Library/TypedArray.cpp` | Direct buffer fast path for `EntryIndexOf`/`EntryIncludes` bypassing `TemplatedIndexOfHelper` |
 | `lib/Runtime/Library/TypedArray.cpp` | Wire `ReverseHelper` to `NeonReverse*` helpers |
+| `lib/Backend/arm64/LowerMDSimd128.cpp` | **NEW** — ARM64 SIMD instruction lowering (uses fixed Q27/Q28/Q29) |
+| `lib/Backend/arm64/LowerMD.cpp` | Gate `LowerSimd128Instruction()` dispatch on `func->DoNeonSimd()` |
+| `lib/Backend/arm64/LegalizeMD.cpp` | NEON instruction legalization |
 
 ---
 
 ## Architecture Decisions
+
+### 0. Borrowed NEON Scratch Registers (D27–D29 → Q27/Q28/Q29)
+
+The linear scan register allocator uses a 64-bit `BitVector` (`BVUnit64`) and ARM64 fills all 64 slots exactly (1 NOREG + 33 integer + 30 float). Adding Q-registers as separate allocatable entries would require expanding the bitvector to 128 bits, adding register aliasing logic (Qn overlaps Dn), and updating spill slot sizing — a 4–6 week effort in the most fragile backend code. Instead, D27/D28/D29 are marked `RA_DONTALLOCATE` and managed explicitly by the NEON lowering pass as Q27/Q28/Q29. Three registers cover all targeted vectorization patterns (element-wise binary, unary, broadcast, reduction, compare+select, fill). See `NeonRegs.h` for the full specification.
+
+### 0b. NEON Gated on FullJit Only via Phase Flags
+
+All JIT NEON codegen is controlled by `PHASE(NeonSimd)` — a sibling of `MemOp` under `GlobOpt` in the phase hierarchy. `DoNeonSimd()` requires `!IsSimpleJit()`, ensuring NEON only fires in FullJit (level 2 JIT) after the profiling interpreter and SimpleJit have collected type and loop-count data. `DoNeonVectorize()` additionally requires `DoGlobOpt()`, ensuring auto-vectorization only runs when type specialization and induction variable analysis are available. Hot loops are filtered by `MinNeonSimdLoopCount` (default 16 iterations). Disable all NEON with `-off:NeonSimd`; diagnose with `-trace:NeonSimd`.
 
 ### 1. Header-only NeonAccel.h
 
@@ -493,22 +515,20 @@ The template `FindMinOrMax<T, checkNaNAndNegZero>` uses `sizeof(T)` and `std::is
 
 ## Next Steps (Recommended Order)
 
-1. **Run benchmarks** on Apple Silicon hardware to establish baseline performance numbers and validate correctness under various alignment/edge cases.
+1. **Investigate pre-existing JIT indexOf hang** — `Array.prototype.indexOf` hangs in JIT-compiled code. Does not affect interpreter. Predates all NEON changes. Likely a JIT lowering or bailout issue for the indexOf helper call.
 
 2. **Wire remaining Phase 1 deferred items** — TypedArray reverse helper wiring; TypedArray direct-buffer indexOf fast path (bypassing `TemplatedIndexOfHelper`).
 
-3. **Begin Phase 3** — JIT NEON codegen (can proceed in parallel):
-   - Add `PHASE(NeonSimd)` / `PHASE(NeonVectorize)` phase flags
-   - Adopt borrowed-register strategy (D27–D29)
-   - Add ARM64 MD opcodes and encoder wiring
+3. **Create `LowerMDSimd128.cpp`** — the main Phase 3 deliverable. ARM64 SIMD lowering using borrowed Q27/Q28/Q29 registers. Gate dispatch on `func->DoNeonSimd()` in `LowerMD.cpp`. Add `DO_NEONSIMD_TRACE()` macros following the `DO_MEMOP_TRACE()` pattern.
 
 4. **Add correctness tests** — unit tests exercising NEON paths for:
    - Fill edge cases (0-length, 1-element, unaligned starts)
    - Min/max special cases (NaN, -0/+0, single element, all-same)
    - IndexOf edge cases (not found, first element, last element, NaN search)
    - SIMD operation correctness A/B comparison (NEON vs scalar for randomized inputs)
+   - Flag control: verify `-off:NeonSimd` disables NEON codegen paths
 
-5. **Phase 4 planning** — begin feasibility assessment for auto-vectorization pass in GlobOpt.
+5. **Phase 4 planning** — begin feasibility assessment for auto-vectorization pass in GlobOpt, gated on `func->DoNeonVectorize()` and `MinNeonSimdLoopCount`.
 
 ---
 

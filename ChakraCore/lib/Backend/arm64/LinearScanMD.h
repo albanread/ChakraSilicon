@@ -30,8 +30,10 @@ public:
     uint        UnAllocatableRegCount(Func *func) const
     { 
         // number of regs marked RA_DONTALLOCATE, including:
+        //   R16, R17, R18, FP, SP, ZR (6 integer)
+        //   D27, D28, D29 (3 NEON scratch — see NeonRegs.h)
         //   ALT_LOCALS_PTR when not the SP
-        uint result = 6;
+        uint result = 9;
         if (func->GetLocalsPointer() != RegSP)
         {
             result += 1;

@@ -210,6 +210,8 @@ PHASE(All)
                 PHASE(MemOp)
                     PHASE(MemSet)
                     PHASE(MemCopy)
+                PHASE(NeonSimd)
+                    PHASE(NeonVectorize)
                 PHASE(IncrementalBailout)
             PHASE(DeadStore)
                 PHASE(ReverseCopyProp)
@@ -829,6 +831,7 @@ PHASE(All)
 #define DEFAULT_CONFIG_SkipSplitWhenResultIgnored (false)
 
 #define DEFAULT_CONFIG_MinMemOpCount (16U)
+#define DEFAULT_CONFIG_MinNeonSimdLoopCount (16U)
 
 #if ENABLE_COPYONACCESS_ARRAY
 #define DEFAULT_CONFIG_MaxCopyOnAccessArrayLength (32U)
@@ -1364,6 +1367,7 @@ FLAGNR(Number,  MinSimpleJitRunCount  , "Minimum number of times a function must
 FLAGNRA(Number, MaxInterpretCount     , Mic, "Maximum number of times a function can be interpreted", 0)
 FLAGNRA(Number, MaxSimpleJitRunCount  , Msjrc, "Maximum number of times a function will be run in SimpleJitted code", 0)
 FLAGNRA(Number, MinMemOpCount         , Mmoc, "Minimum count of a loop to activate MemOp", DEFAULT_CONFIG_MinMemOpCount)
+FLAGNRA(Number, MinNeonSimdLoopCount  , Mnslc, "Minimum loop iteration count to activate NEON SIMD vectorization (FullJit only)", DEFAULT_CONFIG_MinNeonSimdLoopCount)
 
 #if ENABLE_COPYONACCESS_ARRAY
 FLAGNR(Number,  MaxCopyOnAccessArrayLength, "Maximum length of copy-on-access array", DEFAULT_CONFIG_MaxCopyOnAccessArrayLength)

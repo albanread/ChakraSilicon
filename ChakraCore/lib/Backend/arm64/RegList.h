@@ -84,9 +84,9 @@ REGDAT(D23,     d23,      NEONREG_D23,   TyFloat64,  0)
 REGDAT(D24,     d24,      NEONREG_D24,   TyFloat64,  0)
 REGDAT(D25,     d25,      NEONREG_D25,   TyFloat64,  0)
 REGDAT(D26,     d26,      NEONREG_D26,   TyFloat64,  0)
-REGDAT(D27,     d27,      NEONREG_D27,   TyFloat64,  0)
-REGDAT(D28,     d28,      NEONREG_D28,   TyFloat64,  0)
-REGDAT(D29,     d29,      NEONREG_D29,   TyFloat64,  0)
+REGDAT(D27,     d27,      NEONREG_D27,   TyFloat64,  RA_DONTALLOCATE)  // Reserved: NEON scratch Q27
+REGDAT(D28,     d28,      NEONREG_D28,   TyFloat64,  RA_DONTALLOCATE)  // Reserved: NEON scratch Q28
+REGDAT(D29,     d29,      NEONREG_D29,   TyFloat64,  RA_DONTALLOCATE)  // Reserved: NEON scratch Q29
 
 // Arm64 has 66 register definitions. Ignore 2 for now to avoid going past the 64 that will fit into a bitvector during register allocation.
 // TODO: Reorder registers instead to place DONT_ALLOCATE regs at the end. Requires some changes in LinearScan or for RegNumCount to be in the middle of the list.

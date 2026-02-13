@@ -236,6 +236,16 @@ public:
         return !this->m_workItem->IsLoopBody() && !PHASE_OFF(Js::OptimizeTryCatchPhase, this);
     }
 
+    bool DoNeonSimd() const
+    {
+        return !IsSimpleJit() && !PHASE_OFF(Js::NeonSimdPhase, this);
+    }
+
+    bool DoNeonVectorize() const
+    {
+        return DoNeonSimd() && DoGlobOpt() && !PHASE_OFF(Js::NeonVectorizePhase, this);
+    }
+
     bool DoSimpleJitDynamicProfile() const;
     bool IsSimpleJit() const { return m_workItem->GetJitMode() == ExecutionMode::SimpleJit; }
 
