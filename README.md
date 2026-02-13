@@ -95,6 +95,75 @@ This will:
 | `chinta64`  | arm64        | Disabled | Interpreter-only, Apple Silicon    |
 | `chjita64`  | arm64        | Enabled  | JIT-enabled, Apple Silicon         |
 
+## Execution Pipeline
+
+ChakraCore uses a **tiered execution model** — every JavaScript function progresses through increasingly optimized execution modes based on how often it is called. The tiers are controlled by a state machine (`FunctionExecutionStateMachine`) that tracks call counts and decides when to promote a function to the next tier.
+
+### Interpreter
+
+When a function is first called, it runs in the **bytecode interpreter**. The parser converts JavaScript source into an AST, the `ByteCodeGenerator` walks the AST and emits a compact bytecode (register-based, not stack-based), and the interpreter loop (`InterpreterStackFrame`) dispatches each opcode via a large `switch` statement — each `case` reads an `OpLayout`, executes the operation, and advances the instruction pointer.
+
+The interpreter has three sub-modes:
+
+- **Interpreter** — no profiling, minimal overhead. Used in `--no-native` mode or when JIT is disabled.
+- **AutoProfilingInterpreter** — starts with lightweight profiling, switches to full profiling inside hot loops based on iteration count, and switches back on loop exit. This avoids the cost of profiling cold code while still collecting data for hot paths.
+- **ProfilingInterpreter** — full profiling on every operation. Records value types, call targets, branch directions, and array access patterns. This profiling data is what the JIT uses to specialize code.
+
+Each function is given an initial budget of interpreted iterations (configurable, defaults around 12 auto-profiling + 4 profiling iterations) before the JIT is considered.
+
+### SimpleJit
+
+After the interpreter budget is exhausted (default ~21 iterations), the function is queued for **SimpleJit** compilation. SimpleJit is a fast, lightweight JIT that compiles bytecode to native machine code with minimal optimization:
+
+- No global optimizer (`GlobOpt` is skipped)
+- No type specialization, no copy propagation, no dead store elimination
+- No loop invariant hoisting or bounds check elimination
+- Does include fast paths for common operations (property access, arithmetic)
+- Generates profiling information that feeds into FullJit decisions
+
+SimpleJit compiles quickly and produces code that runs 2–5× faster than the interpreter, but the generated machine code is not heavily optimized. Its main purpose is to bridge the gap while FullJit compilation happens on a background thread, and to collect the remaining profile data the FullJit optimizer needs.
+
+### FullJit
+
+Once the full JIT threshold is reached (the sum of all tier budgets, adjusted by heuristics based on loop density and function size), the function is queued for **FullJit** compilation on a background thread (`NativeCodeGenerator`). This is the heavy-duty optimizing compiler:
+
+1. **IRBuilder** — converts bytecode + profiling data into ChakraCore's intermediate representation (IR), a graph of `IR::Instr` nodes in SSA-like form.
+
+2. **GlobOpt** (Global Optimizer) — the core optimization pass. Performs:
+   - **Type specialization** — uses profiling data to specialize operations to `int32`, `float64`, or specific object types, inserting bailout checks for type guards.
+   - **Copy propagation** — eliminates redundant loads by tracking which registers hold the same value.
+   - **Dead store elimination** — removes writes that are never read.
+   - **Constant folding** — evaluates expressions with known constant operands at compile time.
+   - **Loop invariant code motion** — hoists computations that don't change across loop iterations out of the loop.
+   - **Array bounds check hoisting/elimination** — removes or hoists redundant array bounds checks by proving index ranges.
+   - **Inlining** — inlines small callees and built-in functions directly into the caller.
+   - **Path-dependent value analysis** — tracks value ranges along different branch paths.
+
+3. **Lowerer** — converts high-level IR into machine-specific IR. The `LowererMD` (machine-dependent lowerer) handles ARM64-specific instruction selection — mapping IR opcodes to ARM64 instructions, register allocation constraints, and calling convention requirements.
+
+4. **Register Allocator** — linear scan register allocator assigns physical ARM64 registers (`x0`–`x28`, `d0`–`d31`) to IR operands, inserting spills/fills as needed.
+
+5. **Encoder** — final pass that emits actual ARM64 machine code bytes into an executable buffer, resolves branch targets, and emits relocation entries.
+
+6. **Prolog/Epilog** — the `PrologEncoder` emits function entry/exit code (frame setup, callee-saved register saves/restores) with matching DWARF CFI directives.
+
+If a type guard or bounds check fails at runtime, the JIT code **bails out** — it transfers control back to the interpreter at the corresponding bytecode offset, preserving all live values. The function may later be re-JIT'd with updated profiling data.
+
+### JIT Assembly Tracing (Capstone)
+
+ChakraSilicon integrates the [Capstone](https://www.capstone-engine.org/) disassembly engine to provide **JIT assembly tracing** — the ability to inspect the native ARM64 (or x86-64) machine code that the JIT compiler produces. This is invaluable for debugging the JIT backend and understanding what code the optimizer actually generates.
+
+When tracing is enabled, the `JitAsmTracer` class:
+
+1. Captures the raw machine code bytes emitted by the JIT encoder for each compiled function.
+2. Calls `cs_disasm()` to disassemble the bytes into human-readable assembly.
+3. Performs **control flow analysis** — identifies branches, calls, and returns to map out basic blocks.
+4. Performs **register usage analysis** — tracks reads and writes to each register.
+5. Prints a formatted trace with address, raw bytes, and disassembled instructions, annotated with control flow markers (`[C]` call, `[B]` branch, `[R]` return).
+6. Reports performance metrics: instruction mix (math/memory/control), branch density, and register pressure.
+
+Capstone is built as a static library from source (`deps/capstone/`), configured to include only the architecture matching the build target (ARM64 for Apple Silicon, x86-64 for Intel). It is linked into the `ch` shell and the ChakraCore library via the `ChakraCapstone` CMake interface library.
+
 ## What was ported or perhaps 'hacked just enough to work'
 
 ChakraCore was built for Windows x64 and had a Linux ARM64 port (AAPCS64). 
@@ -202,7 +271,7 @@ Distribution packages:
 
 - **WASM**: WebAssembly is not ported. The WASM JIT would need the same DarwinPCS and W^X fixes.
 - **Debugger**: The VS Code debugger protocol is not ported.
-- **Intl**: The ICU internationalization library is not linked. `Intl` objects will throw.
+- **Intl**: Requires Homebrew `icu4c` — the build script auto-detects it, but without ICU installed, `Intl` objects will throw and `String.prototype.normalize` will be a no-op.
 - **JIT codegen**: Some JIT optimization paths may still have ARM64-specific issues. Around 14% of tests fail, mostly in advanced optimizer and ES6 edge cases.
 - **No iOS**: This targets macOS only. iOS would need additional entitlements for JIT.
 
@@ -247,11 +316,14 @@ For ChakraCore engine issues, refer to the [official ChakraCore repository](http
 
 ChakraCore is licensed under the MIT License. See [ChakraCore/LICENSE.txt](ChakraCore/LICENSE.txt) for details.
 
+Capstone is licensed under the BSD 3-Clause License. See [ChakraCore/deps/capstone/LICENSES/LICENSE.TXT](ChakraCore/deps/capstone/LICENSES/LICENSE.TXT) for details.
+
 ## Credits
 
-- **ChakraCore**: Microsoft and [ChakraCore contributors](https://github.com/nicolo-ribaudo/ChakraCore)
-- **Capstone**: Disassembly framework used for JIT assembly tracing
-- **Apple Silicon port**: Alban Read
+- **[ChakraCore](https://github.com/nicolo-ribaudo/ChakraCore)** — Microsoft and ChakraCore contributors. The JavaScript engine that powered Microsoft Edge, released under the MIT License. Copyright © Microsoft Corporation.
+- **[Capstone](https://www.capstone-engine.org/)** — Multi-platform, multi-architecture disassembly framework by Nguyen Anh Quynh. Used for JIT assembly tracing and code analysis. Version 6.0.0, BSD 3-Clause License. Copyright © 2013, COSEINC.
+- **[ICU](https://icu.unicode.org/)** — International Components for Unicode by the Unicode Consortium. Provides `Intl` API, Unicode normalization, and full case mapping. Linked dynamically from Homebrew `icu4c`.
+- **Apple Silicon port** — Alban Read.
 
 ## Support
 
