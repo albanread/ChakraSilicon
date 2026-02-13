@@ -12,7 +12,16 @@ namespace Js
     {
     };
 
-#ifdef _WIN32  // JsSerializedScriptLoadSourceCallback is WIN32 only
+#ifndef _WIN32
+    // On non-Windows, JsSerializedScriptLoadSourceCallback is not defined in the public headers
+    // (it lives in ChakraCommonWindows.h). Define it here so the policy specialization and
+    // explicit template instantiation work for the legacy serialized-script APIs that were
+    // exposed cross-platform (JsParseSerializedScript / JsRunSerializedScript).
+    typedef bool (CHAKRA_CALLBACK * JsSerializedScriptLoadSourceCallback)(
+        _In_ JsSourceContext sourceContext,
+        _Outptr_result_z_ const WCHAR** scriptBuffer);
+#endif
+
     template <>
     class JsrtSourceHolderPolicy<JsSerializedScriptLoadSourceCallback>
     {
@@ -78,7 +87,6 @@ namespace Js
             HeapDeleteArray(allocLength, source);
         }
     };
-#endif  // _WIN32
 
     template <typename TLoadCallback, typename TUnloadCallback>
     void JsrtSourceHolder<TLoadCallback, TUnloadCallback>::EnsureSource(MapRequestFor requestedFor, const WCHAR* reasonString)
@@ -315,7 +323,5 @@ template class JsrtSourceHolder<JsSerializedLoadScriptCallback, JsSerializedScri
 
 #endif // NTBUILD
 
-#ifdef _WIN32
 template class JsrtSourceHolder<JsSerializedScriptLoadSourceCallback, JsSerializedScriptUnloadCallback>;
-#endif // _WIN32
 };

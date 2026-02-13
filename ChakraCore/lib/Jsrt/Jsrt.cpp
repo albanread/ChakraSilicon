@@ -3745,7 +3745,6 @@ JsErrorCode RunScriptCore(const WCHAR *script, JsSourceContext sourceContext,
         parseAttributes, isSourceModule, result);
 }
 
-#ifdef _WIN32
 CHAKRA_API JsParseScript(_In_z_ const WCHAR * script, _In_ JsSourceContext sourceContext,
     _In_z_ const WCHAR *sourceUrl, _Out_ JsValueRef * result)
 {
@@ -3778,7 +3777,6 @@ CHAKRA_API JsExperimentalApiRunModule(_In_z_ const WCHAR * script,
     return RunScriptCore(script, sourceContext, sourceUrl, false,
         JsParseScriptAttributeNone, true, result);
 }
-#endif
 
 JsErrorCode GetScriptBufferDetails(
     _In_ JsValueRef scriptVal,
@@ -4098,7 +4096,6 @@ static void CHAKRA_CALLBACK DummyScriptUnloadCallback(_In_ JsSourceContext sourc
     // Do nothing
 }
 
-#ifdef _WIN32
 static bool CHAKRA_CALLBACK DummyScriptLoadSourceCallback(_In_ JsSourceContext sourceContext, _Outptr_result_z_ const WCHAR** scriptBuffer)
 {
     // sourceContext is actually the script source pointer
@@ -4128,6 +4125,7 @@ CHAKRA_API JsRunSerializedScript(_In_z_ const WCHAR * script, _In_ unsigned char
         buffer, nullptr, sourceContext, sourceUrl, 0, false, false, result, Js::Constants::InvalidSourceIndex);
 }
 
+#ifdef _WIN32
 CHAKRA_API JsParseSerializedScriptWithCallback(_In_ JsSerializedScriptLoadSourceCallback scriptLoadCallback,
     _In_ JsSerializedScriptUnloadCallback scriptUnloadCallback,
     _In_ unsigned char *buffer, _In_ JsSourceContext sourceContext,

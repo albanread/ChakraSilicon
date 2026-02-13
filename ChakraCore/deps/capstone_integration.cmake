@@ -25,6 +25,10 @@ message(STATUS "Capstone: Integrating disassembly engine for JIT tracing")
     set(CAPSTONE_BUILD_TESTS OFF CACHE BOOL "Build tests" FORCE)
     set(CAPSTONE_BUILD_CSTOOL OFF CACHE BOOL "Build cstool" FORCE)
 
+    # Prevent Capstone from overriding CMAKE_OSX_ARCHITECTURES to build universal binaries.
+    # We want it to respect the architecture we're targeting (set by the parent project).
+    set(CAPSTONE_BUILD_MACOS_THIN ON CACHE BOOL "Build single-arch on macOS" FORCE)
+
     # Architecture support - enable x86 and ARM64 for ChakraCore
     # Disable architectures we don't need
     set(CAPSTONE_ARM_SUPPORT OFF CACHE BOOL "ARM support" FORCE)
