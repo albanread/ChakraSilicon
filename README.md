@@ -30,7 +30,8 @@ ChakraSilicon is a working port of ChakraCore — the JavaScript engine that pow
 | Test suite (core JS) | ~86% passing |
 | WASM | ❌ Not ported |
 | Debugger protocol | ❌ Not ported |
-| Intl (ICU) | ❌ Not linked |
+| Intl (ICU) | ✅ Working (Homebrew icu4c) |
+| Unicode normalization | ✅ Working (NFC/NFD/Hangul) |
 
 ## Quick Start
 
@@ -40,12 +41,15 @@ ChakraSilicon is a working port of ChakraCore — the JavaScript engine that pow
 - CMake 3.10 or later
 - C/C++ compiler (clang/clang++ on macOS, gcc/g++ on Linux)
 - Ninja (optional, but recommended for faster builds)
+- ICU (`icu4c`) — required for `Intl` API, `String.prototype.normalize`, and full Unicode case mapping (e.g. `ß` → `SS`)
 
 On macOS with Homebrew:
 
 ```bash
-brew install cmake ninja
+brew install cmake ninja icu4c
 ```
+
+The build script auto-detects Homebrew ICU (including versioned formulae like `icu4c@77`). If ICU is not found, the build will still succeed but without `Intl` support or Unicode normalization.
 
 ### Build a Single Target
 
