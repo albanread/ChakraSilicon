@@ -335,3 +335,63 @@ NESTED_ENTRY BreakSpeculation, _TEXT, NoHandler
     csel x0, x0, x0, eq
     ret
 NESTED_END BreakSpeculation
+
+;-------------------------------------------------------------------------------------------------------
+; arm64_StaticInterpreterThunk: Entry point for JIT->Interpreter calls on Apple ARM64
+;
+; This replaces the C++ StaticInterpreterThunk for Darwin ARM64.
+; The JIT passes arguments in registers x0-x7 and overflow on stack.
+; The InterpreterThunk expects a JavascriptCallStackLayout pointer.
+;
+; We build the layout on stack: [function, callInfo, arg0, arg1, ...]
+; Then call InterpreterThunk with SP as the layout pointer.
+;
+; Entry:
+;   x0 = function object
+;   x1 = callInfo
+;   x2-x7 = arg0..arg5 (first 6 user args)
+;   [SP+0..] = overflow args (arg6, arg7, ...) if Count > 6
+;
+NESTED_ENTRY arm64_StaticInterpreterThunk, _TEXT, NoHandler
+    PROLOG_SAVE_REG_PAIR_INDEXED fp, lr, -16
+
+    ; Extract arg count from callInfo (lower 24 bits)
+    and     x9, x1, #0xFFFFFF      ; x9 = Count
+
+    ; Calculate stack space needed: 16-byte aligned
+    ; Space = (Count + 2) * 8, rounded up to 16
+    add     x10, x9, #2            ; +2 for function, callInfo
+    add     x10, x10, #1           ; round up
+    lsr     x10, x10, #1           ; divide by 2
+    sub     sp, sp, x10, lsl #4    ; allocate 16-byte aligned
+
+    ; Build JavascriptCallStackLayout on stack
+    stp     x0, x1, [sp, #0]       ; function, callInfo
+    stp     x2, x3, [sp, #16]      ; arg0, arg1
+    stp     x4, x5, [sp, #32]      ; arg2, arg3
+    stp     x6, x7, [sp, #48]      ; arg4, arg5
+
+    ; Copy overflow args (if Count > 6)
+    subs    x11, x9, #6
+    b.le    LOCAL_LABEL(InterpNoOverflow)
+
+    add     x12, fp, #16           ; source: original SP (overflow from JIT)
+    add     x13, sp, #64           ; dest: after 8 register slots
+
+LOCAL_LABEL(InterpCopyLoop):
+    ldr     x14, [x12], #8
+    str     x14, [x13], #8
+    subs    x11, x11, #1
+    b.gt    LOCAL_LABEL(InterpCopyLoop)
+
+LOCAL_LABEL(InterpNoOverflow):
+    ; Call InterpreterThunk with layout pointer
+    mov     x0, sp                 ; x0 = &layout
+    bl      __ZN2Js21InterpreterStackFrame16InterpreterThunkEPNS_25JavascriptCallStackLayoutE
+
+    ; Restore and return
+    mov     sp, fp
+    EPILOG_RESTORE_REG_PAIR_INDEXED fp, lr, 16
+    ret
+
+NESTED_END arm64_StaticInterpreterThunk

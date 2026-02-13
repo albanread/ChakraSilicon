@@ -12311,11 +12311,21 @@ Lowerer::GenerateDirectCall(IR::Instr* inlineInstr, IR::Opnd* funcObj, ushort ca
     m_lowererMD.LoadHelperArgument(inlineInstr, funcObj);
 
 #if defined(_ARM64_) && defined(__APPLE__)
-    // DarwinPCS fix: C++ variadic helpers (CallDirect) require arguments on the stack.
-    // However, we now handle this via selective shadow stores in LowerMD.cpp.
-    // The trampoline approach (arm64_CallDirectVarargs) is disabled in favor of
-    // the "One Protocol" design where LowerMD handles the shadow stores for logic
-    // specific to CallDirect, while CallI (JS->JS) remains clean.
+    // DarwinPCS: CallDirect targets C++ variadic Entry* helpers that use va_start.
+    // Shadow-store the function object (slot 0) to the outgoing stack so the callee
+    // sees a contiguous [function, callInfo, args...] frame.
+    if (inlineInstr->m_opcode == Js::OpCode::CallDirect && funcObj->IsRegOpnd())
+    {
+        IR::RegOpnd * spBase = IR::RegOpnd::New(nullptr, m_lowererMD.GetRegStackPointer(), TyMachReg, m_func);
+        IR::IndirOpnd * stackOpnd = IR::IndirOpnd::New(spBase, 0, TyMachReg, m_func);
+        IR::Instr * storeInstr = IR::Instr::New(Js::OpCode::STR, stackOpnd, funcObj->AsRegOpnd(), m_func);
+        inlineInstr->InsertBefore(storeInstr);
+
+        if (m_func->m_argSlotsForFunctionsCalled < 1)
+        {
+            m_func->m_argSlotsForFunctionsCalled = 1;
+        }
+    }
 #endif
 
     m_lowererMD.LowerCall(inlineInstr, (Js::ArgSlot)argCount); //to account for function object and callinfo
