@@ -136,6 +136,48 @@ The following 18 folders passed every test that was run:
 
 Near-perfect (≥95%): Array (98%), Basics (95%), Function (98%), Optimizer (99%), strict (98%), InlineCaches (95%), es7 (95%).
 
+## JavaScript Language Support
+
+ChakraSilicon has **complete ES2019 (ES10) support**, plus cherry-picked features from ES2020–ES2022. The main gaps are optional chaining (`?.`), BigInt literals, logical assignment operators, private class fields, and `WeakRef`/`FinalizationRegistry`.
+
+### ES5 – ES2019: Full Support ✅
+
+| Standard | Key Features |
+|----------|-------------|
+| **ES5** (2009) | `JSON`, `Array.isArray`, `Object.keys`, `Function.bind`, strict mode |
+| **ES2015** (ES6) | `let`/`const`, arrow functions, classes, template literals, destructuring, default/rest params, spread, `Symbol`, `Promise`, `Map`/`Set`/`WeakMap`/`WeakSet`, `Proxy`/`Reflect`, `for...of`, generators, iterators, `Array.from`, `Object.assign`, ES6 modules |
+| **ES2016** (ES7) | `Array.prototype.includes`, exponentiation operator (`**`) |
+| **ES2017** (ES8) | `async`/`await`, `Object.values`/`Object.entries`, `String.padStart`/`padEnd`, `Object.getOwnPropertyDescriptors` |
+| **ES2018** (ES9) | Object rest/spread, RegExp dotAll (`s` flag), async iteration (`async function*`), `Promise.prototype.finally` |
+| **ES2019** (ES10) | `Array.flat`/`flatMap`, `String.trimStart`/`trimEnd`, `Object.fromEntries`, `Symbol.description`, optional catch binding |
+
+### ES2020 – ES2022: Partial Support ⚠️
+
+| Feature | Standard | Status |
+|---------|----------|--------|
+| `globalThis` | ES2020 | ✅ |
+| `Promise.allSettled` | ES2020 | ✅ |
+| Nullish coalescing (`??`) | ES2020 | ✅ |
+| `Promise.any` | ES2021 | ✅ |
+| `AggregateError` | ES2021 | ✅ |
+| Numeric separators (`1_000_000`) | ES2021 | ✅ |
+| `Array.at` | ES2022 | ✅ |
+| `Object.hasOwn` | ES2022 | ✅ |
+| `Error.cause` | ES2022 | ✅ |
+| `Array.findLast` / `findLastIndex` | ES2022 | ✅ |
+| Optional chaining (`?.`) | ES2020 | ❌ |
+| BigInt literals (`1n`) | ES2020 | ❌ |
+| `String.matchAll` | ES2020 | ❌ |
+| `String.replaceAll` | ES2021 | ❌ |
+| `WeakRef` / `FinalizationRegistry` | ES2021 | ❌ |
+| Logical assignment (&#124;&#124;=, &&=, ??=) | ES2021 | ❌ |
+| Private class fields (`#x`) | ES2022 | ❌ |
+| Static class blocks | ES2022 | ❌ |
+
+### ES2023+: Not Supported ❌
+
+`Array.toSorted`, `Array.toReversed`, `Array.toSpliced`, `Array.with` — all absent.
+
 ## Quick Start
 
 ### Prerequisites
