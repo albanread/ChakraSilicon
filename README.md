@@ -27,11 +27,114 @@ ChakraSilicon is a working port of ChakraCore — the JavaScript engine that pow
 | FullJit | ✅ Working |
 | Exception handling | ✅ Working (setjmp/longjmp) |
 | JIT assembly tracing | ✅ Working (Capstone) |
-| Test suite (core JS) | ~86% passing |
+| Test suite (core JS) | ~91% passing (1383/1526 excl. WASM) |
 | WASM | ❌ Not ported |
 | Debugger protocol | ❌ Not ported |
 | Intl (ICU) | ✅ Working (Homebrew icu4c) |
 | Unicode normalization | ✅ Working (NFC/NFD/Hangul) |
+
+## Test Results
+
+> **Last run:** 2026-02-13 — Binary: `dist/chjita64/ch` (JIT-enabled ARM64) — Timeout: 5s/test
+
+### Summary
+
+| Metric | Count |
+|--------|-------|
+| **Total tests** | 2748 |
+| **Ran** | 1649 |
+| **Passed** | 1383 |
+| **Failed** | 266 |
+| **Skipped** | 1099 |
+| **Overall pass rate** | **83%** (1383/1649) |
+| **Core JS pass rate** (excl. WasmSpec) | **91%** (1383/1526) |
+| Folders tested | 62 of 70 |
+| Time | 114s |
+
+### Per-Folder Breakdown
+
+| Folder | Pass | Fail | Skip | Total | Rate |
+|--------|-----:|-----:|-----:|------:|-----:|
+| 262 | 1 | 0 | 0 | 1 | 100% |
+| Array | 85 | 1 | 45 | 131 | 98% |
+| Basics | 46 | 2 | 4 | 52 | 95% |
+| BigInt | 11 | 0 | 0 | 11 | 100% |
+| Boolean | 2 | 0 | 1 | 3 | 100% |
+| Closures | 15 | 1 | 14 | 30 | 93% |
+| ConfigParsing | 0 | 5 | 0 | 5 | 0% |
+| ControlFlow | 16 | 1 | 0 | 17 | 94% |
+| Conversions | 5 | 0 | 0 | 5 | 100% |
+| Date | 8 | 1 | 14 | 23 | 88% |
+| Debugger | 16 | 3 | 1 | 20 | 84% |
+| DebuggerCommon | 132 | 18 | 60 | 210 | 88% |
+| Error | 9 | 12 | 8 | 29 | 42% |
+| FixedFields | 9 | 0 | 9 | 18 | 100% |
+| Function | 54 | 1 | 27 | 82 | 98% |
+| Generated | 110 | 0 | 0 | 110 | 100% |
+| GlobalFunctions | 12 | 1 | 2 | 15 | 92% |
+| InlineCaches | 23 | 1 | 0 | 24 | 95% |
+| JSON | 15 | 1 | 3 | 19 | 93% |
+| JsBuiltIns | 3 | 0 | 0 | 3 | 100% |
+| LetConst | 36 | 3 | 24 | 63 | 92% |
+| Lib | 10 | 1 | 0 | 11 | 90% |
+| Math | 9 | 0 | 0 | 9 | 100% |
+| Number | 9 | 1 | 1 | 11 | 90% |
+| Object | 41 | 3 | 26 | 70 | 93% |
+| Optimizer | 153 | 1 | 106 | 260 | 99% |
+| PRE | 1 | 0 | 1 | 2 | 100% |
+| Prototypes | 8 | 0 | 1 | 9 | 100% |
+| RWC | 1 | 0 | 0 | 1 | 100% |
+| Regex | 33 | 4 | 4 | 41 | 89% |
+| Scanner | 2 | 1 | 0 | 3 | 66% |
+| StackTrace | 2 | 12 | 4 | 18 | 14% |
+| Strings | 36 | 4 | 4 | 44 | 90% |
+| TaggedIntegers | 14 | 0 | 30 | 44 | 100% |
+| TryCatch | 1 | 0 | 0 | 1 | 100% |
+| UnifiedRegex | 20 | 2 | 5 | 27 | 90% |
+| UnitTestFramework | 0 | 1 | 0 | 1 | 0% |
+| WasmSpec | 0 | 123 | 108 | 231 | 0% |
+| WasmSpec.MultiValue | 2 | 0 | 0 | 2 | 100% |
+| bailout | 17 | 1 | 20 | 38 | 94% |
+| es6 | 155 | 17 | 72 | 244 | 90% |
+| es6module | 16 | 1 | 14 | 31 | 94% |
+| es7 | 19 | 1 | 4 | 24 | 95% |
+| fieldopts | 35 | 8 | 79 | 122 | 81% |
+| inlining | 20 | 4 | 27 | 51 | 83% |
+| loop | 4 | 0 | 6 | 10 | 100% |
+| stackfunc | 4 | 0 | 85 | 89 | 100% |
+| strict | 64 | 1 | 42 | 107 | 98% |
+| switchStatement | 14 | 0 | 12 | 26 | 100% |
+| typedarray | 34 | 12 | 17 | 63 | 73% |
+| utf8 | 3 | 2 | 4 | 9 | 60% |
+| wasm | 37 | 15 | 14 | 66 | 71% |
+| wasm.simd | 11 | 0 | 1 | 12 | 100% |
+
+Folders with all tests skipped (feature-gated): ASMJSParser, AsmJSFloat, DynamicCode, FlowGraph, PerfHint, RegAlloc, TaggedFloats, TTBasic, TTExecuteBasic.
+
+### Hanging Folders (8)
+
+The following 8 folders cause the test runner to hang and were excluded:
+
+`AsmJs`, `Bugs`, `EH`, `es5`, `es6GeneratorJit`, `Intl`, `Miscellaneous`, `Operators`
+
+### Notable Failure Areas
+
+- **WasmSpec** (123 failures) — Expected; WASM is not ported.
+- **StackTrace** (12 failures) — Stack trace formatting differences on ARM64/macOS.
+- **Error** (12 failures) — Error message and source-info baseline mismatches.
+- **DebuggerCommon** (18 failures) — Debugger protocol is not ported.
+- **es6** (17 failures) — Mostly `__proto__` initializer and `let`/`const` global shadow edge cases.
+- **typedarray** (12 failures) — TypedArray edge cases.
+- **wasm** (15 failures) — WASM JS API mismatches.
+- **fieldopts** (8 failures) — Field optimization edge cases.
+
+### 100% Pass-Rate Folders
+
+The following 18 folders passed every test that was run:
+
+`262`, `BigInt`, `Boolean`, `Conversions`, `FixedFields`, `Generated`, `JsBuiltIns`, `Math`, `PRE`, `Prototypes`, `RWC`, `TaggedIntegers`, `TryCatch`, `WasmSpec.MultiValue`, `loop`, `stackfunc`, `switchStatement`, `wasm.simd`
+
+Near-perfect (≥95%): Array (98%), Basics (95%), Function (98%), Optimizer (99%), strict (98%), InlineCaches (95%), es7 (95%).
 
 ## Quick Start
 
@@ -272,7 +375,8 @@ Distribution packages:
 - **WASM**: WebAssembly is not ported. The WASM JIT would need the same DarwinPCS and W^X fixes.
 - **Debugger**: The VS Code debugger protocol is not ported.
 - **Intl**: Requires Homebrew `icu4c` — the build script auto-detects it, but without ICU installed, `Intl` objects will throw and `String.prototype.normalize` will be a no-op.
-- **JIT codegen**: Some JIT optimization paths may still have ARM64-specific issues. Around 14% of tests fail, mostly in advanced optimizer and ES6 edge cases.
+- **JIT codegen**: Some JIT optimization paths may still have ARM64-specific issues. ~9% of core JS tests fail (excluding WASM), mostly in error formatting, debugger, ES6 edge cases, and stack traces.
+- **Hanging tests**: 8 test folders (AsmJs, Bugs, EH, es5, es6GeneratorJit, Intl, Miscellaneous, Operators) cause the test runner to hang and must be skipped.
 - **No iOS**: This targets macOS only. iOS would need additional entitlements for JIT.
 
 ## Platform Support
