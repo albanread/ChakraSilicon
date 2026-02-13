@@ -59,8 +59,16 @@ ChakraCore/Build/VcBuild/
 
 # ChakraCore generated files
 ChakraCore/compile_commands.json
-ChakraCore/bin/**/ch
-ChakraCore/bin/**/ch.exe
+
+# Ignore compiled ch/ch.exe binaries but NOT the bin/ch/ source directory.
+# The old pattern "ChakraCore/bin/**/ch" matched the directory bin/ch/ itself
+# (because ** matches zero path segments), which caused all source files inside
+# bin/ch/ to be silently excluded from git — even with negation rules below.
+# These narrower patterns only match the final executable outputs:
+ChakraCore/bin/ch/ch
+ChakraCore/bin/ch/ch.exe
+ChakraCore/bin/**/ch.dSYM/
+
 ChakraCore/lib/**/*.a
 ChakraCore/lib/**/*.so
 ChakraCore/lib/**/*.dylib
