@@ -1814,15 +1814,8 @@ skipThunk:
     }
 #endif
 
-#if defined(_M_ARM64) && defined(_WIN32)
-    // Language\arm64\arm64_Thunks.asm
-#elif defined(_M_ARM64) && defined(__APPLE__)
-    // arm64_StaticInterpreterThunk implemented in arm64_CallFunction.S for DarwinPCS
-    extern "C" Var arm64_StaticInterpreterThunk(RecyclableObject* function, CallInfo callInfo, ...);
-    Var InterpreterStackFrame::StaticInterpreterThunk(RecyclableObject* function, CallInfo callInfo, ...)
-    {
-        return arm64_StaticInterpreterThunk(function, callInfo);
-    }
+#if defined(_M_ARM64)
+    // arm64: implemented in assembly (arm64_Thunks.asm on Windows, arm64_CallFunction.S on Apple)
 #else
     Var InterpreterStackFrame::StaticInterpreterThunk(RecyclableObject* function, CallInfo callInfo, ...)
     {

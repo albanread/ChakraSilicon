@@ -7,10 +7,6 @@
 #include "Backend.h"
 #include "Language/JavascriptFunctionArgIndex.h"
 
-#if defined(_ARM64_) && defined(__APPLE__)
-extern "C" void arm64_DebugTrampoline(void);
-#endif
-
 const Js::OpCode LowererMD::MDUncondBranchOpcode = Js::OpCode::B;
 const Js::OpCode LowererMD::MDMultiBranchOpcode = Js::OpCode::BR;
 const Js::OpCode LowererMD::MDTestOpcode = Js::OpCode::TST;
@@ -466,6 +462,7 @@ LowererMD::LowerCallIDynamic(IR::Instr *callInstr, IR::Instr*saveThisArgOutInstr
     // functionOpnd is the first argument.
     IR::Opnd * opndParam = this->GetOpndForArgSlot(0);
     Lowerer::InsertMove(opndParam, funcObjOpnd, callInstr);
+
     return this->LowerCall(callInstr, 0);
 }
 
@@ -609,22 +606,6 @@ LowererMD::LowerCallI(IR::Instr * callInstr, ushort callFlags, bool isHelper, IR
     IR::Opnd * opndParam = this->GetOpndForArgSlot(0);
     Lowerer::InsertMove(opndParam, functionObjOpnd, callInstr);
 
-#if defined(__APPLE__)
-    // DarwinPCS: also store function object (slot 0) to outgoing stack area
-    // so that variadic callees can find it via va_list.
-    {
-        IntConstType offset = 0 * MachRegInt;
-        IR::RegOpnd * spBase = IR::RegOpnd::New(nullptr, this->GetRegStackPointer(), TyMachReg, this->m_func);
-        IR::IndirOpnd * stackOpnd = IR::IndirOpnd::New(spBase, int32(offset), TyMachReg, this->m_func);
-        Lowerer::InsertMove(stackOpnd, opndParam, callInstr);
-
-        if (this->m_func->m_argSlotsForFunctionsCalled < 1)
-        {
-            this->m_func->m_argSlotsForFunctionsCalled = 1;
-        }
-    }
-#endif
-
     IR::Opnd *const finalDst = callInstr->GetDst();
 
     // Finally, lower the call instruction itself.
@@ -705,11 +686,9 @@ LowererMD::LowerCallArgs(IR::Instr *callInstr, IR::Instr *stackParamInsert, usho
             callInstr->InsertBefore(argInstr);
 
 #if defined(__APPLE__)
-            // DarwinPCS: variadic C++ callees (like ExternalFunctionThunk) use va_list
-            // to find args on the stack, not in registers. The JIT calling convention
-            // puts args in x0-x7, but we must ALSO store them to the outgoing arg area
-            // on the stack so that DECLARE_ARGS_VARARRAY can find them via va_list.
-            // This mirrors what arm64_CallFunction does in assembly.
+            // DarwinPCS: only CallDirect targets C++ variadic Entry* helpers.
+            // JS CallI paths must keep [SP+0] available for overflow args.
+            if (callInstr->m_opcode == Js::OpCode::CallDirect)
             {
                 Js::ArgSlot stackSlot = argSlotNum + extraParams;
                 IntConstType offset = stackSlot * MachRegInt;
@@ -757,8 +736,7 @@ LowererMD::LowerCallArgs(IR::Instr *callInstr, IR::Instr *stackParamInsert, usho
     Lowerer::InsertMove(opndParam, opndCallInfo, callInstr);
 
 #if defined(__APPLE__)
-    // DarwinPCS: also store callInfo (slot 1) to outgoing stack area
-    // so that variadic callees can find it via va_list.
+    if (callInstr->m_opcode == Js::OpCode::CallDirect)
     {
         IntConstType offset = extraParams * MachRegInt;
         IR::RegOpnd * spBase = IR::RegOpnd::New(nullptr, this->GetRegStackPointer(), TyMachReg, this->m_func);
@@ -831,9 +809,6 @@ LowererMD::GetOpndForArgSlot(Js::ArgSlot argSlot, IR::Opnd * argOpnd)
         else
         {
             // Overflow arguments go on the stack.
-            // On ARM64 Darwin, these must be placed in the outgoing parameter area at the
-            // BOTTOM of the caller's stack frame (positive offsets from SP after prologue allocation).
-            // The outgoing area size is m_argSlotsForFunctionsCalled * 8, allocated in the prologue.
             argSlot = argSlot - NUM_INT_ARG_REGS;
             IntConstType offset = argSlot * MachRegInt;
             IR::RegOpnd * spBase = IR::RegOpnd::New(nullptr, this->GetRegStackPointer(), TyMachReg, this->m_func);

@@ -72,15 +72,10 @@ NESTED_END arm64_CallFunction
 ;-------------------------------------------------------------------------------------------------------
 ; arm64_CallJIT: Trampoline for interpreter → JIT-compiled function calls on Apple ARM64.
 ;
-; This uses the "overflow only" stack layout matching the Windows arm64_CallFunction.asm:
+; This uses the "overflow only" stack layout matching Windows arm64_CallFunction.asm:
 ;   - x0-x7 carry all register arguments (function, callInfo, values[0..5])
 ;   - Only overflow arguments (values[6+]) are placed on the stack at [SP+0], [SP+8], ...
 ;   - The JIT callee's prolog homes x0-x7 and reads overflow args from [CallerSP+0]
-;
-; This is necessary because the JIT's GetOpndForArgSlot computes overflow arg offsets as:
-;   slot 8 → [CallerSP + 0], slot 9 → [CallerSP + 8], etc.
-; The standard arm64_CallFunction puts a contiguous [function, callInfo, values[0..N]] frame
-; on the stack, causing CallerSP+0 to contain the function object instead of values[6].
 ;
 ; On entry (matches arm64_CallFunction signature):
 ;   x0 = function, x1 = callInfo, x2 = argCount, x3 = values, x4 = entryPoint
@@ -337,22 +332,23 @@ NESTED_ENTRY BreakSpeculation, _TEXT, NoHandler
 NESTED_END BreakSpeculation
 
 ;-------------------------------------------------------------------------------------------------------
-; arm64_StaticInterpreterThunk: Entry point for JIT->Interpreter calls on Apple ARM64
+; Js::InterpreterStackFrame::StaticInterpreterThunk: Entry point for JIT->Interpreter calls on Apple ARM64
 ;
 ; This replaces the C++ StaticInterpreterThunk for Darwin ARM64.
-; The JIT passes arguments in registers x0-x7 and overflow on stack.
-; The InterpreterThunk expects a JavascriptCallStackLayout pointer.
+; Since we have unified the calling convention to always use a contiguous stack frame
+; [function, callInfo, arg0, arg1, ...], the layout is already built on the stack
+; by the caller (either arm64_CallFunction or a JIT-compiled caller).
 ;
-; We build the layout on stack: [function, callInfo, arg0, arg1, ...]
-; Then call InterpreterThunk with SP as the layout pointer.
+; The JIT caller passes arguments in registers x0-x7 AND the full contiguous frame on stack.
+; InterpreterThunk expects a JavascriptCallStackLayout* (which is just the address of 'function').
 ;
 ; Entry:
 ;   x0 = function object
 ;   x1 = callInfo
-;   x2-x7 = arg0..arg5 (first 6 user args)
+;   x2-x7 = arg0..arg5
 ;   [SP+0..] = overflow args (arg6, arg7, ...) if Count > 6
 ;
-NESTED_ENTRY arm64_StaticInterpreterThunk, _TEXT, NoHandler
+NESTED_ENTRY _ZN2Js21InterpreterStackFrame22StaticInterpreterThunkEPNS_16RecyclableObjectENS_8CallInfoEz, _TEXT, NoHandler
     PROLOG_SAVE_REG_PAIR_INDEXED fp, lr, -16
 
     ; Extract arg count from callInfo (lower 24 bits)
@@ -387,11 +383,10 @@ LOCAL_LABEL(InterpCopyLoop):
 LOCAL_LABEL(InterpNoOverflow):
     ; Call InterpreterThunk with layout pointer
     mov     x0, sp                 ; x0 = &layout
-    bl      __ZN2Js21InterpreterStackFrame16InterpreterThunkEPNS_25JavascriptCallStackLayoutE
+    bl      C_FUNC(_ZN2Js21InterpreterStackFrame16InterpreterThunkEPNS_25JavascriptCallStackLayoutE)
 
     ; Restore and return
     mov     sp, fp
     EPILOG_RESTORE_REG_PAIR_INDEXED fp, lr, 16
     ret
-
-NESTED_END arm64_StaticInterpreterThunk
+NESTED_END _ZN2Js21InterpreterStackFrame22StaticInterpreterThunkEPNS_16RecyclableObjectENS_8CallInfoEz

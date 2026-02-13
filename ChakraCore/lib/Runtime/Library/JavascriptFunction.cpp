@@ -1435,19 +1435,9 @@ dbl_align:
         Js::Var varResult;
 
 #if defined(__APPLE__) && ENABLE_NATIVE_CODEGEN
-        // DarwinPCS split trampoline (Bug A + Bug B fix):
-        //
-        // arm64_CallFunction builds a contiguous frame [function, callInfo, values[0..N]]
-        // starting at [SP+0]. This is required for C++ variadic Entry* functions because
-        // DarwinPCS va_start reads variadic args from the stack.
-        //
-        // arm64_CallJIT builds an overflow-only frame [values[6], values[7], ...] starting
-        // at [SP+0], matching what the JIT callee expects (GetOpndForArgSlot: slot 8 → [CallerSP+0]).
-        //
-        // When argCount > 6 and the target is JIT code, use arm64_CallJIT to avoid the
-        // stack layout collision where [CallerSP+0] would contain the function object
-        // instead of the first overflow argument.
-        if (argCount > 6 && JavascriptFunction::IsNativeAddress(function->GetScriptContext(), (void*)entryPoint))
+    // For script functions with overflow args, use overflow-only layout.
+    // This covers both interpreter and JIT entrypoints for user JS functions.
+    if (argCount > 6 && VarTo<JavascriptFunction>(function)->IsScriptFunction())
         {
             varResult = JS_REENTRANCY_CHECK(function->GetScriptContext()->GetThreadContext(),
                 arm64_CallJIT((JavascriptFunction*)function, args.Info, argCount, args.Values, entryPoint));
