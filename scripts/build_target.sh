@@ -33,6 +33,34 @@ CHAKRA_SRC="$REPO_ROOT/ChakraCore"
 BUILD_BASE="$REPO_ROOT/build"
 DIST_BASE="$REPO_ROOT/dist"
 
+# ICU detection for macOS (Homebrew)
+ICU_INCLUDE_PATH=""
+detect_icu() {
+    # Try versioned icu4c formulae first (e.g. icu4c@77, icu4c@76, ...)
+    local icu_prefix=""
+    for formula in $(brew list 2>/dev/null | grep '^icu4c' | sort -rV); do
+        icu_prefix="$(brew --prefix "$formula" 2>/dev/null)"
+        if [[ -n "$icu_prefix" && -d "$icu_prefix/include/unicode" ]]; then
+            ICU_INCLUDE_PATH="$icu_prefix/include"
+            log_success "Found ICU: $formula ($icu_prefix)"
+            return 0
+        fi
+    done
+
+    # Fallback: check common Homebrew paths directly
+    for candidate in /opt/homebrew/opt/icu4c/include /usr/local/opt/icu4c/include; do
+        if [[ -d "$candidate/unicode" ]]; then
+            ICU_INCLUDE_PATH="$candidate"
+            log_success "Found ICU at $candidate"
+            return 0
+        fi
+    done
+
+    log_warning "ICU not found. Building without ICU (no Intl, no normalize)."
+    log_warning "Install with: brew install icu4c"
+    return 1
+}
+
 # Target definitions (name:arch:mode)
 get_target_info() {
     local target=$1
@@ -181,6 +209,16 @@ build_target() {
         log_info "STP/LDP Prohibition: Enabled"
     fi
 
+    # Detect ICU
+    local icu_flag=""
+    detect_icu
+    if [[ -n "$ICU_INCLUDE_PATH" ]]; then
+        icu_flag="-DICU_INCLUDE_PATH=$ICU_INCLUDE_PATH"
+        log_info "ICU: Enabled ($ICU_INCLUDE_PATH)"
+    else
+        log_info "ICU: Disabled (--no-icu build)"
+    fi
+
     # Configure with CMake
     log_info "Configuring CMake..."
     cd "$build_dir"
@@ -192,6 +230,7 @@ build_target() {
         -DCMAKE_SYSTEM_PROCESSOR="$cmake_arch" \
         $jit_flag \
         $apple_silicon_flag \
+        $icu_flag \
         -DCMAKE_INSTALL_PREFIX="$dist_dir" \
         -DBUILD_TESTING=OFF
 

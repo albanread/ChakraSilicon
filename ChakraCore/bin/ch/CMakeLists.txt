@@ -47,6 +47,7 @@ set(lib_target "${lib_target}"
   ${LINKER_START_GROUP}
   ChakraCoreStatic
   ${LINKER_END_GROUP}
+  ${ICU_LIBRARIES}
   ${CC_LTO_ENABLED}
   dl
   )
