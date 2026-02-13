@@ -30,9 +30,10 @@
 //-------------------------------------------------------------------------------------------------------
 
 #ifdef PROHIBIT_STP_LDP
-    // On Apple Silicon, we must use individual STR/LDR instead of STP/LDP
-    #define USE_INDIVIDUAL_STACK_OPS 1
-    #define APPLE_SILICON_STACK_OPERATIONS 1
+    // Note: PROHIBIT_STP_LDP is still defined for build compatibility, but
+    // the prolog/epilog now uses STP/LDP paired instructions for correctness.
+    #define USE_INDIVIDUAL_STACK_OPS 0
+    #define APPLE_SILICON_STACK_OPERATIONS 0
 #else
     // Other platforms can use efficient STP/LDP instructions
     #define USE_INDIVIDUAL_STACK_OPS 0
@@ -163,13 +164,14 @@
         #error "APPLE_SILICON_JIT must be defined when building for Apple Silicon"
     #endif
     
-    #ifndef PROHIBIT_STP_LDP
-        #error "PROHIBIT_STP_LDP must be defined when building for Apple Silicon"
-    #endif
+    // STP/LDP are now used in prolog/epilog - no restriction needed
+    // #ifndef PROHIBIT_STP_LDP
+    //     #error "PROHIBIT_STP_LDP must be defined when building for Apple Silicon"
+    // #endif
     
-    #if !USE_INDIVIDUAL_STACK_OPS
-        #error "Individual stack operations required for Apple Silicon"
-    #endif
+    // #if !USE_INDIVIDUAL_STACK_OPS
+    //     #error "Individual stack operations required for Apple Silicon"
+    // #endif
     
     // Warn about potential performance implications
     #pragma message("Building with Apple Silicon JIT support - individual stack operations enabled")

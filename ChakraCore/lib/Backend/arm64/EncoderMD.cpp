@@ -1339,6 +1339,727 @@ EncoderMD::GenerateEncoding(IR::Instr* instr, BYTE *pc)
         bytes = this->EmitLoadStoreFpPair(Emitter, instr, instr->GetDst(), instr->GetSrc1(), instr->GetSrc2(), EmitNeonStpOffset);
         break;
 
+    //-------------------------------------------------------------------------------------------------------
+    // NEON Vector Instructions (Phase 2)
+    //
+    // These cases wire the NEON_* MD opcodes (from MdOpCodes.h) to the EmitNeon*
+    // functions defined in ARM64NeonEncoder.h.
+    //
+    // Convention: NEON vector ops reuse the float register file (D0-D29 / V0-V29).
+    // The NEON_SIZE parameter selects the arrangement:
+    //   SIZE_4S = 4x float32  (128-bit, .4S)
+    //   SIZE_2D = 2x float64  (128-bit, .2D)
+    //   SIZE_4S also used for 4x int32
+    //   SIZE_8H = 8x int16    (128-bit, .8H)
+    //   SIZE_16B = 16x int8   (128-bit, .16B)
+    //
+    // The size is inferred from the operand type/size set by the lowerer.
+    // For Phase 2 we support the core set needed for memset/memcopy vectorization
+    // and element-wise arithmetic loop vectorization.
+    //-------------------------------------------------------------------------------------------------------
+
+    // --- NEON Data Movement ---
+    case Js::OpCode::NEON_DUP:
+    {
+        // DUP Vd.<T>, Rn — broadcast GP register to all vector lanes
+        dst = instr->GetDst();
+        src1 = instr->GetSrc1();
+        Assert(dst->IsRegOpnd());
+        Assert(src1->IsRegOpnd());
+        size = dst->GetSize();
+        // Determine NEON arrangement from element size encoded in the type
+        // For DUP from GP reg, we use the full vector size
+        NEON_SIZE dupSize;
+        if (src1->GetType() == TyInt8 || src1->GetType() == TyUint8)
+            dupSize = SIZE_16B;
+        else if (src1->GetType() == TyInt16 || src1->GetType() == TyUint16)
+            dupSize = SIZE_8H;
+        else if (src1->GetType() == TyFloat64 || src1->GetType() == TyInt64 || src1->GetType() == TyUint64)
+            dupSize = SIZE_2D;
+        else
+            dupSize = SIZE_4S; // default: 4x32-bit (int32/uint32/float32)
+        // Explicit NeonRegisterParam + Arm64SimpleRegisterParam to disambiguate from the element-DUP overload
+        NeonRegisterParam neonDstDup(this->GetFloatRegEncode(dst->AsRegOpnd()), dupSize);
+        Arm64SimpleRegisterParam gpSrcDup(this->GetRegEncode(src1->AsRegOpnd()));
+        bytes = EmitNeonDup(Emitter, neonDstDup, gpSrcDup, dupSize);
+        break;
+    }
+
+    case Js::OpCode::NEON_MOVI:
+    {
+        // MOVI Vd.<T>, #imm
+        dst = instr->GetDst();
+        src1 = instr->GetSrc1();
+        Assert(dst->IsRegOpnd());
+        Assert(src1->IsIntConstOpnd());
+        int64 imm = src1->AsIntConstOpnd()->GetValue();
+        bytes = EmitNeonMovi(Emitter, this->GetFloatRegEncode(dst->AsRegOpnd()), (ULONG)imm, SIZE_4S);
+        break;
+    }
+
+    case Js::OpCode::NEON_MOV:
+    {
+        // MOV Vd.16B, Vn.16B — alias for ORR Vd, Vn, Vn
+        dst = instr->GetDst();
+        src1 = instr->GetSrc1();
+        Assert(dst->IsRegOpnd());
+        Assert(src1->IsRegOpnd());
+        bytes = EmitNeonMov(Emitter, this->GetFloatRegEncode(dst->AsRegOpnd()), this->GetFloatRegEncode(src1->AsRegOpnd()), SIZE_16B);
+        break;
+    }
+
+    // --- NEON Load / Store ---
+    case Js::OpCode::NEON_LD1:
+    {
+        // LD1 {Vt.<T>}, [Xn] — uses element-level LD1 with index 0 (single element load)
+        // For whole-vector loads, prefer NEON_LDR_Q instead.
+        dst = instr->GetDst();
+        src1 = instr->GetSrc1();
+        Assert(dst->IsRegOpnd());
+        Assert(src1->IsIndirOpnd() || src1->IsRegOpnd());
+        if (src1->IsIndirOpnd())
+        {
+            IR::IndirOpnd *indirOpnd = src1->AsIndirOpnd();
+            Assert(indirOpnd->GetOffset() == 0); // LD1 has no immediate offset form
+            NeonRegisterParam neonDstLd1(this->GetFloatRegEncode(dst->AsRegOpnd()), SIZE_1S);
+            Arm64SimpleRegisterParam gpAddrLd1(this->GetRegEncode(indirOpnd->GetBaseOpnd()));
+            bytes = EmitNeonLd1(Emitter, neonDstLd1, 0, gpAddrLd1, SIZE_1S);
+        }
+        else
+        {
+            NeonRegisterParam neonDstLd1(this->GetFloatRegEncode(dst->AsRegOpnd()), SIZE_1S);
+            Arm64SimpleRegisterParam gpAddrLd1(this->GetRegEncode(src1->AsRegOpnd()));
+            bytes = EmitNeonLd1(Emitter, neonDstLd1, 0, gpAddrLd1, SIZE_1S);
+        }
+        break;
+    }
+
+    case Js::OpCode::NEON_ST1:
+    {
+        // ST1 {Vt.<T>}, [Xn] — uses element-level ST1 with index 0 (single element store)
+        // For whole-vector stores, prefer NEON_STR_Q instead.
+        dst = instr->GetDst();
+        src1 = instr->GetSrc1();
+        Assert(src1->IsRegOpnd());
+        Assert(dst->IsIndirOpnd() || dst->IsRegOpnd());
+        if (dst->IsIndirOpnd())
+        {
+            IR::IndirOpnd *indirOpnd = dst->AsIndirOpnd();
+            Assert(indirOpnd->GetOffset() == 0);
+            NeonRegisterParam neonSrcSt1(this->GetFloatRegEncode(src1->AsRegOpnd()), SIZE_1S);
+            Arm64SimpleRegisterParam gpAddrSt1(this->GetRegEncode(indirOpnd->GetBaseOpnd()));
+            bytes = EmitNeonSt1(Emitter, neonSrcSt1, 0, gpAddrSt1, SIZE_1S);
+        }
+        else
+        {
+            NeonRegisterParam neonSrcSt1(this->GetFloatRegEncode(src1->AsRegOpnd()), SIZE_1S);
+            Arm64SimpleRegisterParam gpAddrSt1(this->GetRegEncode(dst->AsRegOpnd()));
+            bytes = EmitNeonSt1(Emitter, neonSrcSt1, 0, gpAddrSt1, SIZE_1S);
+        }
+        break;
+    }
+
+    case Js::OpCode::NEON_LDR_Q:
+        bytes = this->EmitLoadStoreFp(Emitter, instr, instr->GetSrc1(), instr->GetDst(), EmitNeonLdrOffset);
+        break;
+
+    case Js::OpCode::NEON_STR_Q:
+        bytes = this->EmitLoadStoreFp(Emitter, instr, instr->GetDst(), instr->GetSrc1(), EmitNeonStrOffset);
+        break;
+
+    // --- NEON Integer Arithmetic ---
+    case Js::OpCode::NEON_ADD:
+    {
+        dst = instr->GetDst();
+        src1 = instr->GetSrc1();
+        src2 = instr->GetSrc2();
+        Assert(dst->IsRegOpnd() && src1->IsRegOpnd() && src2->IsRegOpnd());
+        bytes = EmitNeonAdd(Emitter, this->GetFloatRegEncode(dst->AsRegOpnd()), this->GetFloatRegEncode(src1->AsRegOpnd()), this->GetFloatRegEncode(src2->AsRegOpnd()), SIZE_4S);
+        break;
+    }
+
+    case Js::OpCode::NEON_SUB:
+    {
+        dst = instr->GetDst();
+        src1 = instr->GetSrc1();
+        src2 = instr->GetSrc2();
+        Assert(dst->IsRegOpnd() && src1->IsRegOpnd() && src2->IsRegOpnd());
+        bytes = EmitNeonSub(Emitter, this->GetFloatRegEncode(dst->AsRegOpnd()), this->GetFloatRegEncode(src1->AsRegOpnd()), this->GetFloatRegEncode(src2->AsRegOpnd()), SIZE_4S);
+        break;
+    }
+
+    case Js::OpCode::NEON_MUL:
+    {
+        dst = instr->GetDst();
+        src1 = instr->GetSrc1();
+        src2 = instr->GetSrc2();
+        Assert(dst->IsRegOpnd() && src1->IsRegOpnd() && src2->IsRegOpnd());
+        bytes = EmitNeonMul(Emitter, this->GetFloatRegEncode(dst->AsRegOpnd()), this->GetFloatRegEncode(src1->AsRegOpnd()), this->GetFloatRegEncode(src2->AsRegOpnd()), SIZE_4S);
+        break;
+    }
+
+    case Js::OpCode::NEON_NEG:
+    {
+        dst = instr->GetDst();
+        src1 = instr->GetSrc1();
+        Assert(dst->IsRegOpnd() && src1->IsRegOpnd());
+        bytes = EmitNeonNeg(Emitter, this->GetFloatRegEncode(dst->AsRegOpnd()), this->GetFloatRegEncode(src1->AsRegOpnd()), SIZE_4S);
+        break;
+    }
+
+    case Js::OpCode::NEON_ABS:
+    {
+        dst = instr->GetDst();
+        src1 = instr->GetSrc1();
+        Assert(dst->IsRegOpnd() && src1->IsRegOpnd());
+        bytes = EmitNeonAbs(Emitter, this->GetFloatRegEncode(dst->AsRegOpnd()), this->GetFloatRegEncode(src1->AsRegOpnd()), SIZE_4S);
+        break;
+    }
+
+    // --- NEON Floating-Point Arithmetic ---
+    case Js::OpCode::NEON_FADD:
+    {
+        dst = instr->GetDst();
+        src1 = instr->GetSrc1();
+        src2 = instr->GetSrc2();
+        Assert(dst->IsRegOpnd() && src1->IsRegOpnd() && src2->IsRegOpnd());
+        size = dst->GetSize();
+        NEON_SIZE faddSize = (size == 8) ? SIZE_2D : SIZE_4S;
+        bytes = EmitNeonFadd(Emitter, this->GetFloatRegEncode(dst->AsRegOpnd()), this->GetFloatRegEncode(src1->AsRegOpnd()), this->GetFloatRegEncode(src2->AsRegOpnd()), faddSize);
+        break;
+    }
+
+    case Js::OpCode::NEON_FSUB:
+    {
+        dst = instr->GetDst();
+        src1 = instr->GetSrc1();
+        src2 = instr->GetSrc2();
+        Assert(dst->IsRegOpnd() && src1->IsRegOpnd() && src2->IsRegOpnd());
+        size = dst->GetSize();
+        NEON_SIZE fsubSize = (size == 8) ? SIZE_2D : SIZE_4S;
+        bytes = EmitNeonFsub(Emitter, this->GetFloatRegEncode(dst->AsRegOpnd()), this->GetFloatRegEncode(src1->AsRegOpnd()), this->GetFloatRegEncode(src2->AsRegOpnd()), fsubSize);
+        break;
+    }
+
+    case Js::OpCode::NEON_FMUL:
+    {
+        dst = instr->GetDst();
+        src1 = instr->GetSrc1();
+        src2 = instr->GetSrc2();
+        Assert(dst->IsRegOpnd() && src1->IsRegOpnd() && src2->IsRegOpnd());
+        size = dst->GetSize();
+        NEON_SIZE fmulSize = (size == 8) ? SIZE_2D : SIZE_4S;
+        bytes = EmitNeonFmul(Emitter, this->GetFloatRegEncode(dst->AsRegOpnd()), this->GetFloatRegEncode(src1->AsRegOpnd()), this->GetFloatRegEncode(src2->AsRegOpnd()), fmulSize);
+        break;
+    }
+
+    case Js::OpCode::NEON_FDIV:
+    {
+        dst = instr->GetDst();
+        src1 = instr->GetSrc1();
+        src2 = instr->GetSrc2();
+        Assert(dst->IsRegOpnd() && src1->IsRegOpnd() && src2->IsRegOpnd());
+        size = dst->GetSize();
+        NEON_SIZE fdivSize = (size == 8) ? SIZE_2D : SIZE_4S;
+        bytes = EmitNeonFdiv(Emitter, this->GetFloatRegEncode(dst->AsRegOpnd()), this->GetFloatRegEncode(src1->AsRegOpnd()), this->GetFloatRegEncode(src2->AsRegOpnd()), fdivSize);
+        break;
+    }
+
+    case Js::OpCode::NEON_FNEG:
+    {
+        dst = instr->GetDst();
+        src1 = instr->GetSrc1();
+        Assert(dst->IsRegOpnd() && src1->IsRegOpnd());
+        size = dst->GetSize();
+        NEON_SIZE fnegSize = (size == 8) ? SIZE_2D : SIZE_4S;
+        bytes = EmitNeonFneg(Emitter, this->GetFloatRegEncode(dst->AsRegOpnd()), this->GetFloatRegEncode(src1->AsRegOpnd()), fnegSize);
+        break;
+    }
+
+    case Js::OpCode::NEON_FABS:
+    {
+        dst = instr->GetDst();
+        src1 = instr->GetSrc1();
+        Assert(dst->IsRegOpnd() && src1->IsRegOpnd());
+        size = dst->GetSize();
+        NEON_SIZE fabsSize = (size == 8) ? SIZE_2D : SIZE_4S;
+        bytes = EmitNeonFabs(Emitter, this->GetFloatRegEncode(dst->AsRegOpnd()), this->GetFloatRegEncode(src1->AsRegOpnd()), fabsSize);
+        break;
+    }
+
+    case Js::OpCode::NEON_FSQRT:
+    {
+        dst = instr->GetDst();
+        src1 = instr->GetSrc1();
+        Assert(dst->IsRegOpnd() && src1->IsRegOpnd());
+        size = dst->GetSize();
+        NEON_SIZE fsqrtSize = (size == 8) ? SIZE_2D : SIZE_4S;
+        bytes = EmitNeonFsqrt(Emitter, this->GetFloatRegEncode(dst->AsRegOpnd()), this->GetFloatRegEncode(src1->AsRegOpnd()), fsqrtSize);
+        break;
+    }
+
+    case Js::OpCode::NEON_FMLA:
+    {
+        dst = instr->GetDst();
+        src1 = instr->GetSrc1();
+        src2 = instr->GetSrc2();
+        Assert(dst->IsRegOpnd() && src1->IsRegOpnd() && src2->IsRegOpnd());
+        size = dst->GetSize();
+        NEON_SIZE fmlaSize = (size == 8) ? SIZE_2D : SIZE_4S;
+        bytes = EmitNeonFmla(Emitter, this->GetFloatRegEncode(dst->AsRegOpnd()), this->GetFloatRegEncode(src1->AsRegOpnd()), this->GetFloatRegEncode(src2->AsRegOpnd()), fmlaSize);
+        break;
+    }
+
+    case Js::OpCode::NEON_FMLS:
+    {
+        dst = instr->GetDst();
+        src1 = instr->GetSrc1();
+        src2 = instr->GetSrc2();
+        Assert(dst->IsRegOpnd() && src1->IsRegOpnd() && src2->IsRegOpnd());
+        size = dst->GetSize();
+        NEON_SIZE fmlsSize = (size == 8) ? SIZE_2D : SIZE_4S;
+        bytes = EmitNeonFmls(Emitter, this->GetFloatRegEncode(dst->AsRegOpnd()), this->GetFloatRegEncode(src1->AsRegOpnd()), this->GetFloatRegEncode(src2->AsRegOpnd()), fmlsSize);
+        break;
+    }
+
+    // --- NEON Min / Max ---
+    case Js::OpCode::NEON_SMIN:
+    {
+        dst = instr->GetDst(); src1 = instr->GetSrc1(); src2 = instr->GetSrc2();
+        Assert(dst->IsRegOpnd() && src1->IsRegOpnd() && src2->IsRegOpnd());
+        bytes = EmitNeonSmin(Emitter, this->GetFloatRegEncode(dst->AsRegOpnd()), this->GetFloatRegEncode(src1->AsRegOpnd()), this->GetFloatRegEncode(src2->AsRegOpnd()), SIZE_4S);
+        break;
+    }
+
+    case Js::OpCode::NEON_SMAX:
+    {
+        dst = instr->GetDst(); src1 = instr->GetSrc1(); src2 = instr->GetSrc2();
+        Assert(dst->IsRegOpnd() && src1->IsRegOpnd() && src2->IsRegOpnd());
+        bytes = EmitNeonSmax(Emitter, this->GetFloatRegEncode(dst->AsRegOpnd()), this->GetFloatRegEncode(src1->AsRegOpnd()), this->GetFloatRegEncode(src2->AsRegOpnd()), SIZE_4S);
+        break;
+    }
+
+    case Js::OpCode::NEON_UMIN:
+    {
+        dst = instr->GetDst(); src1 = instr->GetSrc1(); src2 = instr->GetSrc2();
+        Assert(dst->IsRegOpnd() && src1->IsRegOpnd() && src2->IsRegOpnd());
+        bytes = EmitNeonUmin(Emitter, this->GetFloatRegEncode(dst->AsRegOpnd()), this->GetFloatRegEncode(src1->AsRegOpnd()), this->GetFloatRegEncode(src2->AsRegOpnd()), SIZE_4S);
+        break;
+    }
+
+    case Js::OpCode::NEON_UMAX:
+    {
+        dst = instr->GetDst(); src1 = instr->GetSrc1(); src2 = instr->GetSrc2();
+        Assert(dst->IsRegOpnd() && src1->IsRegOpnd() && src2->IsRegOpnd());
+        bytes = EmitNeonUmax(Emitter, this->GetFloatRegEncode(dst->AsRegOpnd()), this->GetFloatRegEncode(src1->AsRegOpnd()), this->GetFloatRegEncode(src2->AsRegOpnd()), SIZE_4S);
+        break;
+    }
+
+    case Js::OpCode::NEON_FMIN:
+    {
+        dst = instr->GetDst(); src1 = instr->GetSrc1(); src2 = instr->GetSrc2();
+        Assert(dst->IsRegOpnd() && src1->IsRegOpnd() && src2->IsRegOpnd());
+        size = dst->GetSize();
+        NEON_SIZE fminSize = (size == 8) ? SIZE_2D : SIZE_4S;
+        bytes = EmitNeonFmin(Emitter, this->GetFloatRegEncode(dst->AsRegOpnd()), this->GetFloatRegEncode(src1->AsRegOpnd()), this->GetFloatRegEncode(src2->AsRegOpnd()), fminSize);
+        break;
+    }
+
+    case Js::OpCode::NEON_FMAX:
+    {
+        dst = instr->GetDst(); src1 = instr->GetSrc1(); src2 = instr->GetSrc2();
+        Assert(dst->IsRegOpnd() && src1->IsRegOpnd() && src2->IsRegOpnd());
+        size = dst->GetSize();
+        NEON_SIZE fmaxSize = (size == 8) ? SIZE_2D : SIZE_4S;
+        bytes = EmitNeonFmax(Emitter, this->GetFloatRegEncode(dst->AsRegOpnd()), this->GetFloatRegEncode(src1->AsRegOpnd()), this->GetFloatRegEncode(src2->AsRegOpnd()), fmaxSize);
+        break;
+    }
+
+    case Js::OpCode::NEON_FMINNM:
+    {
+        dst = instr->GetDst(); src1 = instr->GetSrc1(); src2 = instr->GetSrc2();
+        Assert(dst->IsRegOpnd() && src1->IsRegOpnd() && src2->IsRegOpnd());
+        size = dst->GetSize();
+        NEON_SIZE fminnmSize = (size == 8) ? SIZE_2D : SIZE_4S;
+        bytes = EmitNeonFminnm(Emitter, this->GetFloatRegEncode(dst->AsRegOpnd()), this->GetFloatRegEncode(src1->AsRegOpnd()), this->GetFloatRegEncode(src2->AsRegOpnd()), fminnmSize);
+        break;
+    }
+
+    case Js::OpCode::NEON_FMAXNM:
+    {
+        dst = instr->GetDst(); src1 = instr->GetSrc1(); src2 = instr->GetSrc2();
+        Assert(dst->IsRegOpnd() && src1->IsRegOpnd() && src2->IsRegOpnd());
+        size = dst->GetSize();
+        NEON_SIZE fmaxnmSize = (size == 8) ? SIZE_2D : SIZE_4S;
+        bytes = EmitNeonFmaxnm(Emitter, this->GetFloatRegEncode(dst->AsRegOpnd()), this->GetFloatRegEncode(src1->AsRegOpnd()), this->GetFloatRegEncode(src2->AsRegOpnd()), fmaxnmSize);
+        break;
+    }
+
+    // --- NEON Horizontal Reduction ---
+    case Js::OpCode::NEON_ADDV:
+    {
+        dst = instr->GetDst(); src1 = instr->GetSrc1();
+        Assert(dst->IsRegOpnd() && src1->IsRegOpnd());
+        bytes = EmitNeonAddv(Emitter, this->GetFloatRegEncode(dst->AsRegOpnd()), this->GetFloatRegEncode(src1->AsRegOpnd()), SIZE_4S);
+        break;
+    }
+
+    case Js::OpCode::NEON_SMAXV:
+    {
+        dst = instr->GetDst(); src1 = instr->GetSrc1();
+        Assert(dst->IsRegOpnd() && src1->IsRegOpnd());
+        bytes = EmitNeonSmaxv(Emitter, this->GetFloatRegEncode(dst->AsRegOpnd()), this->GetFloatRegEncode(src1->AsRegOpnd()), SIZE_4S);
+        break;
+    }
+
+    case Js::OpCode::NEON_SMINV:
+    {
+        dst = instr->GetDst(); src1 = instr->GetSrc1();
+        Assert(dst->IsRegOpnd() && src1->IsRegOpnd());
+        bytes = EmitNeonSminv(Emitter, this->GetFloatRegEncode(dst->AsRegOpnd()), this->GetFloatRegEncode(src1->AsRegOpnd()), SIZE_4S);
+        break;
+    }
+
+    case Js::OpCode::NEON_FADDP:
+    {
+        dst = instr->GetDst(); src1 = instr->GetSrc1(); src2 = instr->GetSrc2();
+        Assert(dst->IsRegOpnd() && src1->IsRegOpnd() && src2->IsRegOpnd());
+        size = dst->GetSize();
+        NEON_SIZE faddpSize = (size == 8) ? SIZE_2D : SIZE_4S;
+        bytes = EmitNeonFaddp(Emitter, this->GetFloatRegEncode(dst->AsRegOpnd()), this->GetFloatRegEncode(src1->AsRegOpnd()), this->GetFloatRegEncode(src2->AsRegOpnd()), faddpSize);
+        break;
+    }
+
+    case Js::OpCode::NEON_FMAXNMV:
+    {
+        dst = instr->GetDst(); src1 = instr->GetSrc1();
+        Assert(dst->IsRegOpnd() && src1->IsRegOpnd());
+        bytes = EmitNeonFmaxnmv(Emitter, this->GetFloatRegEncode(dst->AsRegOpnd()), this->GetFloatRegEncode(src1->AsRegOpnd()), SIZE_4S);
+        break;
+    }
+
+    case Js::OpCode::NEON_FMINNMV:
+    {
+        dst = instr->GetDst(); src1 = instr->GetSrc1();
+        Assert(dst->IsRegOpnd() && src1->IsRegOpnd());
+        bytes = EmitNeonFminnmv(Emitter, this->GetFloatRegEncode(dst->AsRegOpnd()), this->GetFloatRegEncode(src1->AsRegOpnd()), SIZE_4S);
+        break;
+    }
+
+    // --- NEON Comparison ---
+    case Js::OpCode::NEON_CMEQ:
+    {
+        dst = instr->GetDst(); src1 = instr->GetSrc1(); src2 = instr->GetSrc2();
+        Assert(dst->IsRegOpnd() && src1->IsRegOpnd() && src2->IsRegOpnd());
+        bytes = EmitNeonCmeq(Emitter, this->GetFloatRegEncode(dst->AsRegOpnd()), this->GetFloatRegEncode(src1->AsRegOpnd()), this->GetFloatRegEncode(src2->AsRegOpnd()), SIZE_4S);
+        break;
+    }
+
+    case Js::OpCode::NEON_CMGT:
+    {
+        dst = instr->GetDst(); src1 = instr->GetSrc1(); src2 = instr->GetSrc2();
+        Assert(dst->IsRegOpnd() && src1->IsRegOpnd() && src2->IsRegOpnd());
+        bytes = EmitNeonCmgt(Emitter, this->GetFloatRegEncode(dst->AsRegOpnd()), this->GetFloatRegEncode(src1->AsRegOpnd()), this->GetFloatRegEncode(src2->AsRegOpnd()), SIZE_4S);
+        break;
+    }
+
+    case Js::OpCode::NEON_CMGE:
+    {
+        dst = instr->GetDst(); src1 = instr->GetSrc1(); src2 = instr->GetSrc2();
+        Assert(dst->IsRegOpnd() && src1->IsRegOpnd() && src2->IsRegOpnd());
+        bytes = EmitNeonCmge(Emitter, this->GetFloatRegEncode(dst->AsRegOpnd()), this->GetFloatRegEncode(src1->AsRegOpnd()), this->GetFloatRegEncode(src2->AsRegOpnd()), SIZE_4S);
+        break;
+    }
+
+    case Js::OpCode::NEON_CMEQ0:
+    {
+        dst = instr->GetDst(); src1 = instr->GetSrc1();
+        Assert(dst->IsRegOpnd() && src1->IsRegOpnd());
+        bytes = EmitNeonCmeq0(Emitter, this->GetFloatRegEncode(dst->AsRegOpnd()), this->GetFloatRegEncode(src1->AsRegOpnd()), SIZE_4S);
+        break;
+    }
+
+    case Js::OpCode::NEON_FCMEQ:
+    {
+        dst = instr->GetDst(); src1 = instr->GetSrc1(); src2 = instr->GetSrc2();
+        Assert(dst->IsRegOpnd() && src1->IsRegOpnd() && src2->IsRegOpnd());
+        size = dst->GetSize();
+        NEON_SIZE fcmeqSize = (size == 8) ? SIZE_2D : SIZE_4S;
+        bytes = EmitNeonFcmeq(Emitter, this->GetFloatRegEncode(dst->AsRegOpnd()), this->GetFloatRegEncode(src1->AsRegOpnd()), this->GetFloatRegEncode(src2->AsRegOpnd()), fcmeqSize);
+        break;
+    }
+
+    case Js::OpCode::NEON_FCMGT:
+    {
+        dst = instr->GetDst(); src1 = instr->GetSrc1(); src2 = instr->GetSrc2();
+        Assert(dst->IsRegOpnd() && src1->IsRegOpnd() && src2->IsRegOpnd());
+        size = dst->GetSize();
+        NEON_SIZE fcmgtSize = (size == 8) ? SIZE_2D : SIZE_4S;
+        bytes = EmitNeonFcmgt(Emitter, this->GetFloatRegEncode(dst->AsRegOpnd()), this->GetFloatRegEncode(src1->AsRegOpnd()), this->GetFloatRegEncode(src2->AsRegOpnd()), fcmgtSize);
+        break;
+    }
+
+    case Js::OpCode::NEON_FCMGE:
+    {
+        dst = instr->GetDst(); src1 = instr->GetSrc1(); src2 = instr->GetSrc2();
+        Assert(dst->IsRegOpnd() && src1->IsRegOpnd() && src2->IsRegOpnd());
+        size = dst->GetSize();
+        NEON_SIZE fcmgeSize = (size == 8) ? SIZE_2D : SIZE_4S;
+        bytes = EmitNeonFcmge(Emitter, this->GetFloatRegEncode(dst->AsRegOpnd()), this->GetFloatRegEncode(src1->AsRegOpnd()), this->GetFloatRegEncode(src2->AsRegOpnd()), fcmgeSize);
+        break;
+    }
+
+    // --- NEON Bitwise Logic ---
+    case Js::OpCode::NEON_AND:
+    {
+        dst = instr->GetDst(); src1 = instr->GetSrc1(); src2 = instr->GetSrc2();
+        Assert(dst->IsRegOpnd() && src1->IsRegOpnd() && src2->IsRegOpnd());
+        bytes = EmitNeonAnd(Emitter, this->GetFloatRegEncode(dst->AsRegOpnd()), this->GetFloatRegEncode(src1->AsRegOpnd()), this->GetFloatRegEncode(src2->AsRegOpnd()), SIZE_16B);
+        break;
+    }
+
+    case Js::OpCode::NEON_ORR:
+    {
+        dst = instr->GetDst(); src1 = instr->GetSrc1(); src2 = instr->GetSrc2();
+        Assert(dst->IsRegOpnd() && src1->IsRegOpnd() && src2->IsRegOpnd());
+        bytes = EmitNeonOrrRegister(Emitter, this->GetFloatRegEncode(dst->AsRegOpnd()), this->GetFloatRegEncode(src1->AsRegOpnd()), this->GetFloatRegEncode(src2->AsRegOpnd()), SIZE_16B);
+        break;
+    }
+
+    case Js::OpCode::NEON_EOR:
+    {
+        dst = instr->GetDst(); src1 = instr->GetSrc1(); src2 = instr->GetSrc2();
+        Assert(dst->IsRegOpnd() && src1->IsRegOpnd() && src2->IsRegOpnd());
+        bytes = EmitNeonEor(Emitter, this->GetFloatRegEncode(dst->AsRegOpnd()), this->GetFloatRegEncode(src1->AsRegOpnd()), this->GetFloatRegEncode(src2->AsRegOpnd()), SIZE_16B);
+        break;
+    }
+
+    case Js::OpCode::NEON_NOT:
+    {
+        dst = instr->GetDst(); src1 = instr->GetSrc1();
+        Assert(dst->IsRegOpnd() && src1->IsRegOpnd());
+        bytes = EmitNeonNot(Emitter, this->GetFloatRegEncode(dst->AsRegOpnd()), this->GetFloatRegEncode(src1->AsRegOpnd()), SIZE_16B);
+        break;
+    }
+
+    case Js::OpCode::NEON_BSL:
+    {
+        dst = instr->GetDst(); src1 = instr->GetSrc1(); src2 = instr->GetSrc2();
+        Assert(dst->IsRegOpnd() && src1->IsRegOpnd() && src2->IsRegOpnd());
+        bytes = EmitNeonBsl(Emitter, this->GetFloatRegEncode(dst->AsRegOpnd()), this->GetFloatRegEncode(src1->AsRegOpnd()), this->GetFloatRegEncode(src2->AsRegOpnd()), SIZE_16B);
+        break;
+    }
+
+    case Js::OpCode::NEON_BIC:
+    {
+        dst = instr->GetDst(); src1 = instr->GetSrc1(); src2 = instr->GetSrc2();
+        Assert(dst->IsRegOpnd() && src1->IsRegOpnd() && src2->IsRegOpnd());
+        bytes = EmitNeonBicRegister(Emitter, this->GetFloatRegEncode(dst->AsRegOpnd()), this->GetFloatRegEncode(src1->AsRegOpnd()), this->GetFloatRegEncode(src2->AsRegOpnd()), SIZE_16B);
+        break;
+    }
+
+    // --- NEON Shift ---
+    case Js::OpCode::NEON_SHL:
+    {
+        dst = instr->GetDst(); src1 = instr->GetSrc1(); src2 = instr->GetSrc2();
+        Assert(dst->IsRegOpnd() && src1->IsRegOpnd());
+        Assert(src2->IsIntConstOpnd());
+        int64 shift = src2->AsIntConstOpnd()->GetValue();
+        bytes = EmitNeonShl(Emitter, this->GetFloatRegEncode(dst->AsRegOpnd()), this->GetFloatRegEncode(src1->AsRegOpnd()), (int)shift, SIZE_4S);
+        break;
+    }
+
+    case Js::OpCode::NEON_SSHR:
+    {
+        dst = instr->GetDst(); src1 = instr->GetSrc1(); src2 = instr->GetSrc2();
+        Assert(dst->IsRegOpnd() && src1->IsRegOpnd());
+        Assert(src2->IsIntConstOpnd());
+        int64 shift = src2->AsIntConstOpnd()->GetValue();
+        bytes = EmitNeonSshr(Emitter, this->GetFloatRegEncode(dst->AsRegOpnd()), this->GetFloatRegEncode(src1->AsRegOpnd()), (int)shift, SIZE_4S);
+        break;
+    }
+
+    case Js::OpCode::NEON_USHR:
+    {
+        dst = instr->GetDst(); src1 = instr->GetSrc1(); src2 = instr->GetSrc2();
+        Assert(dst->IsRegOpnd() && src1->IsRegOpnd());
+        Assert(src2->IsIntConstOpnd());
+        int64 shift = src2->AsIntConstOpnd()->GetValue();
+        bytes = EmitNeonUshr(Emitter, this->GetFloatRegEncode(dst->AsRegOpnd()), this->GetFloatRegEncode(src1->AsRegOpnd()), (int)shift, SIZE_4S);
+        break;
+    }
+
+    // --- NEON Permute ---
+    case Js::OpCode::NEON_REV64:
+    {
+        dst = instr->GetDst(); src1 = instr->GetSrc1();
+        Assert(dst->IsRegOpnd() && src1->IsRegOpnd());
+        bytes = EmitNeonRev64(Emitter, this->GetFloatRegEncode(dst->AsRegOpnd()), this->GetFloatRegEncode(src1->AsRegOpnd()), SIZE_4S);
+        break;
+    }
+
+    case Js::OpCode::NEON_REV32:
+    {
+        dst = instr->GetDst(); src1 = instr->GetSrc1();
+        Assert(dst->IsRegOpnd() && src1->IsRegOpnd());
+        bytes = EmitNeonRev32(Emitter, this->GetFloatRegEncode(dst->AsRegOpnd()), this->GetFloatRegEncode(src1->AsRegOpnd()), SIZE_8H);
+        break;
+    }
+
+    case Js::OpCode::NEON_REV16:
+    {
+        dst = instr->GetDst(); src1 = instr->GetSrc1();
+        Assert(dst->IsRegOpnd() && src1->IsRegOpnd());
+        bytes = EmitNeonRev16(Emitter, this->GetFloatRegEncode(dst->AsRegOpnd()), this->GetFloatRegEncode(src1->AsRegOpnd()), SIZE_16B);
+        break;
+    }
+
+    case Js::OpCode::NEON_EXT:
+    {
+        dst = instr->GetDst(); src1 = instr->GetSrc1(); src2 = instr->GetSrc2();
+        Assert(dst->IsRegOpnd() && src1->IsRegOpnd() && src2->IsRegOpnd());
+        // EXT index is encoded in the immediate field; we default to 0 here
+        // The lowerer must set the index appropriately
+        bytes = EmitNeonExt(Emitter, this->GetFloatRegEncode(dst->AsRegOpnd()), this->GetFloatRegEncode(src1->AsRegOpnd()), this->GetFloatRegEncode(src2->AsRegOpnd()), 0, SIZE_16B);
+        break;
+    }
+
+    case Js::OpCode::NEON_TBL:
+    {
+        dst = instr->GetDst(); src1 = instr->GetSrc1(); src2 = instr->GetSrc2();
+        Assert(dst->IsRegOpnd() && src1->IsRegOpnd() && src2->IsRegOpnd());
+        NeonRegisterParam neonDstTbl(this->GetFloatRegEncode(dst->AsRegOpnd()), SIZE_16B);
+        NeonRegisterParam neonSrcTbl(this->GetFloatRegEncode(src1->AsRegOpnd()), SIZE_16B);
+        NeonRegisterParam neonIdxTbl(this->GetFloatRegEncode(src2->AsRegOpnd()), SIZE_16B);
+        bytes = EmitNeonTbl(Emitter, neonDstTbl, neonSrcTbl, neonIdxTbl, SIZE_16B);
+        break;
+    }
+
+    // --- NEON Type Conversion ---
+    case Js::OpCode::NEON_SCVTF:
+    {
+        // Vector SCVTF: both operands are NEON registers (NeonRegisterParam)
+        // Explicit NeonRegisterParam construction disambiguates from the scalar GP→FP overload
+        dst = instr->GetDst(); src1 = instr->GetSrc1();
+        Assert(dst->IsRegOpnd() && src1->IsRegOpnd());
+        size = dst->GetSize();
+        NEON_SIZE scvtfSize = (size == 8) ? SIZE_2D : SIZE_4S;
+        NeonRegisterParam neonDstScvtf(this->GetFloatRegEncode(dst->AsRegOpnd()), scvtfSize);
+        NeonRegisterParam neonSrcScvtf(this->GetFloatRegEncode(src1->AsRegOpnd()), scvtfSize);
+        bytes = EmitNeonScvtf(Emitter, neonDstScvtf, neonSrcScvtf, scvtfSize);
+        break;
+    }
+
+    case Js::OpCode::NEON_UCVTF:
+    {
+        dst = instr->GetDst(); src1 = instr->GetSrc1();
+        Assert(dst->IsRegOpnd() && src1->IsRegOpnd());
+        size = dst->GetSize();
+        NEON_SIZE ucvtfSize = (size == 8) ? SIZE_2D : SIZE_4S;
+        NeonRegisterParam neonDstUcvtf(this->GetFloatRegEncode(dst->AsRegOpnd()), ucvtfSize);
+        NeonRegisterParam neonSrcUcvtf(this->GetFloatRegEncode(src1->AsRegOpnd()), ucvtfSize);
+        bytes = EmitNeonUcvtf(Emitter, neonDstUcvtf, neonSrcUcvtf, ucvtfSize);
+        break;
+    }
+
+    case Js::OpCode::NEON_FCVTZS:
+    {
+        dst = instr->GetDst(); src1 = instr->GetSrc1();
+        Assert(dst->IsRegOpnd() && src1->IsRegOpnd());
+        size = dst->GetSize();
+        NEON_SIZE fcvtzsSize = (size == 8) ? SIZE_2D : SIZE_4S;
+        NeonRegisterParam neonDstFcvtzs(this->GetFloatRegEncode(dst->AsRegOpnd()), fcvtzsSize);
+        NeonRegisterParam neonSrcFcvtzs(this->GetFloatRegEncode(src1->AsRegOpnd()), fcvtzsSize);
+        bytes = EmitNeonFcvtzs(Emitter, neonDstFcvtzs, neonSrcFcvtzs, fcvtzsSize);
+        break;
+    }
+
+    case Js::OpCode::NEON_FCVTZU:
+    {
+        dst = instr->GetDst(); src1 = instr->GetSrc1();
+        Assert(dst->IsRegOpnd() && src1->IsRegOpnd());
+        size = dst->GetSize();
+        NEON_SIZE fcvtzuSize = (size == 8) ? SIZE_2D : SIZE_4S;
+        NeonRegisterParam neonDstFcvtzu(this->GetFloatRegEncode(dst->AsRegOpnd()), fcvtzuSize);
+        NeonRegisterParam neonSrcFcvtzu(this->GetFloatRegEncode(src1->AsRegOpnd()), fcvtzuSize);
+        bytes = EmitNeonFcvtzu(Emitter, neonDstFcvtzu, neonSrcFcvtzu, fcvtzuSize);
+        break;
+    }
+
+    // --- NEON Element Insert / Extract ---
+    case Js::OpCode::NEON_INS:
+    {
+        // INS Vd.<T>[idx], Rn — insert GP register into vector lane
+        dst = instr->GetDst();
+        src1 = instr->GetSrc1();
+        src2 = instr->GetSrc2(); // lane index
+        Assert(dst->IsRegOpnd() && src1->IsRegOpnd());
+        Assert(src2->IsIntConstOpnd());
+        int64 insLane = src2->AsIntConstOpnd()->GetValue();
+        NeonRegisterParam neonDstIns(this->GetFloatRegEncode(dst->AsRegOpnd()), SIZE_1S);
+        Arm64SimpleRegisterParam gpSrcIns(this->GetRegEncode(src1->AsRegOpnd()));
+        bytes = EmitNeonIns(Emitter, neonDstIns, (int)insLane, gpSrcIns, SIZE_1S);
+        break;
+    }
+
+    case Js::OpCode::NEON_UMOV:
+    {
+        // UMOV Rd, Vn.<T>[idx] — move vector lane to GP register (unsigned)
+        dst = instr->GetDst();
+        src1 = instr->GetSrc1();
+        src2 = instr->GetSrc2(); // lane index
+        Assert(dst->IsRegOpnd() && src1->IsRegOpnd());
+        Assert(src2->IsIntConstOpnd());
+        int64 umovLane = src2->AsIntConstOpnd()->GetValue();
+        Arm64SimpleRegisterParam gpDstUmov(this->GetRegEncode(dst->AsRegOpnd()));
+        NeonRegisterParam neonSrcUmov(this->GetFloatRegEncode(src1->AsRegOpnd()), SIZE_1S);
+        bytes = EmitNeonUmov(Emitter, gpDstUmov, neonSrcUmov, (ULONG)umovLane, SIZE_1S);
+        break;
+    }
+
+    case Js::OpCode::NEON_DUP_ELEM:
+    {
+        // DUP Vd.<T>, Vn.<T>[idx]
+        dst = instr->GetDst();
+        src1 = instr->GetSrc1();
+        src2 = instr->GetSrc2(); // lane index
+        Assert(dst->IsRegOpnd() && src1->IsRegOpnd());
+        Assert(src2->IsIntConstOpnd());
+        int64 lane = src2->AsIntConstOpnd()->GetValue();
+        bytes = EmitNeonDupElement(Emitter, this->GetFloatRegEncode(dst->AsRegOpnd()), this->GetFloatRegEncode(src1->AsRegOpnd()), (int)lane, SIZE_4S);
+        break;
+    }
+
+    // --- NEON Widen / Narrow ---
+    case Js::OpCode::NEON_SXTL:
+    {
+        dst = instr->GetDst(); src1 = instr->GetSrc1();
+        Assert(dst->IsRegOpnd() && src1->IsRegOpnd());
+        bytes = EmitNeonSxtl(Emitter, this->GetFloatRegEncode(dst->AsRegOpnd()), this->GetFloatRegEncode(src1->AsRegOpnd()), SIZE_4S);
+        break;
+    }
+
+    case Js::OpCode::NEON_UXTL:
+    {
+        dst = instr->GetDst(); src1 = instr->GetSrc1();
+        Assert(dst->IsRegOpnd() && src1->IsRegOpnd());
+        bytes = EmitNeonUxtl(Emitter, this->GetFloatRegEncode(dst->AsRegOpnd()), this->GetFloatRegEncode(src1->AsRegOpnd()), SIZE_4S);
+        break;
+    }
+
+    case Js::OpCode::NEON_XTN:
+    {
+        dst = instr->GetDst(); src1 = instr->GetSrc1();
+        Assert(dst->IsRegOpnd() && src1->IsRegOpnd());
+        bytes = EmitNeonXtn(Emitter, this->GetFloatRegEncode(dst->AsRegOpnd()), this->GetFloatRegEncode(src1->AsRegOpnd()), SIZE_4S);
+        break;
+    }
+
+    // --- NEON Prefetch ---
+    case Js::OpCode::NEON_PRFM:
+        bytes = this->EmitPrefetch(Emitter, instr, instr->GetSrc1());
+        break;
+
     // Opcode not yet implemented
     default:
 #if DBG_DUMP

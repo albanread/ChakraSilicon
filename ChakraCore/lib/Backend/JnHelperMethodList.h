@@ -654,6 +654,12 @@ HELPERCALL(MemoryBarrier, nullptr, AttrCanNotBeReentrant)
 HELPERCALLCRT(GuardCheckCall, AttrCanNotBeReentrant)
 #endif
 
+#if defined(_ARM64_) && defined(__APPLE__)
+// DarwinPCS trampoline for CallDirect to variadic Entry* functions.
+// Spills register-passed args to the stack so va_start works correctly.
+HELPERCALL(CallDirectVarargs, arm64_CallDirectVarargs, AttrCanNotBeReentrant)
+#endif
+
 // This is statically initialized.
 #ifdef _M_IX86
 HELPERCALL( CRT_chkstk, _chkstk, AttrCanNotBeReentrant)

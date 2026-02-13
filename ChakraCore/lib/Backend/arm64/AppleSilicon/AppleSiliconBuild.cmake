@@ -219,13 +219,12 @@ endif()
 #-------------------------------------------------------------------------------------------------------
 
 if(CC_APPLE_SILICON)
-    # Validate that required definitions are set
-    if(NOT DEFINED APPLE_SILICON_JIT)
-        message(FATAL_ERROR "APPLE_SILICON_JIT must be defined for Apple Silicon builds")
-    endif()
-
-    if(NOT DEFINED PROHIBIT_STP_LDP)
-        message(FATAL_ERROR "PROHIBIT_STP_LDP must be defined for Apple Silicon builds")
+    # Validate that required CMake variables are set
+    # Note: APPLE_SILICON_JIT and PROHIBIT_STP_LDP are C preprocessor defines
+    # added via add_definitions() in the top-level CMakeLists.txt, not CMake variables.
+    # We validate using the CMake-level variable CC_APPLE_SILICON instead.
+    if(NOT CC_APPLE_SILICON)
+        message(FATAL_ERROR "CC_APPLE_SILICON must be set for Apple Silicon builds")
     endif()
 
     # Check for required Apple frameworks

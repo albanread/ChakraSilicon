@@ -138,6 +138,7 @@ elseif(CC_TARGETS_ARM64)
         arm64/arm64_CallFunction.S
         arm64/arm64_DeferredDeserializeThunk.S
         arm64/arm64_DeferredParsingThunk.S
+        arm64/arm64_DebugDump.cpp
     )
 endif()
 

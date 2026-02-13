@@ -9,6 +9,7 @@
 //----------------------------------------------------------------------------
 #include "RuntimeLibraryPch.h"
 #include "AtomicsOperations.h"
+#include "Language/NeonAccel.h"
 
 #define INSTANTIATE_BUILT_IN_ENTRYPOINTS(typeName) \
     template Var typeName::NewInstance(RecyclableObject* function, CallInfo callInfo, ...); \
@@ -2534,6 +2535,81 @@ namespace Js
         uint len = this->GetLength();
 
         Assert(sizeof(T)+GetByteOffset() <= GetArrayBuffer()->GetByteLength());
+
+#if CHAKRA_NEON_AVAILABLE
+        // ---- NEON-accelerated path ----
+        // Dispatch to the appropriate NeonAccel min/max scanner based on element type.
+        // Float types: NeonMinMaxFloat32/Float64 handle NaN detection and -0/+0 ordering.
+        // Integer types: NeonMinMaxInt32/Uint32/Int16/Uint16/Int8/Uint8 — no NaN concerns.
+
+        if (checkNaNAndNegZero && sizeof(T) == sizeof(float))
+        {
+            // Float32Array
+            float result = NeonAccel::NeonMinMaxFloat32(
+                reinterpret_cast<const float*>(typedBuffer), len, findMax);
+            if (std::isnan(result))
+            {
+                return scriptContext->GetLibrary()->GetNaN();
+            }
+            return Js::JavascriptNumber::ToVarNoCheck(static_cast<T>(result), scriptContext);
+        }
+        else if (checkNaNAndNegZero && sizeof(T) == sizeof(double))
+        {
+            // Float64Array
+            double result = NeonAccel::NeonMinMaxFloat64(
+                reinterpret_cast<const double*>(typedBuffer), len, findMax);
+            if (std::isnan(result))
+            {
+                return scriptContext->GetLibrary()->GetNaN();
+            }
+            return Js::JavascriptNumber::ToVarNoCheck(static_cast<T>(result), scriptContext);
+        }
+        else if (!checkNaNAndNegZero && sizeof(T) == sizeof(int32) && std::is_signed<T>::value)
+        {
+            // Int32Array
+            int32_t result = NeonAccel::NeonMinMaxInt32(
+                reinterpret_cast<const int32_t*>(typedBuffer), len, findMax);
+            return Js::JavascriptNumber::ToVarNoCheck(static_cast<T>(result), scriptContext);
+        }
+        else if (!checkNaNAndNegZero && sizeof(T) == sizeof(uint32) && !std::is_signed<T>::value)
+        {
+            // Uint32Array
+            uint32_t result = NeonAccel::NeonMinMaxUint32(
+                reinterpret_cast<const uint32_t*>(typedBuffer), len, findMax);
+            return Js::JavascriptNumber::ToVarNoCheck(static_cast<T>(result), scriptContext);
+        }
+        else if (!checkNaNAndNegZero && sizeof(T) == sizeof(int16) && std::is_signed<T>::value)
+        {
+            // Int16Array
+            int16_t result = NeonAccel::NeonMinMaxInt16(
+                reinterpret_cast<const int16_t*>(typedBuffer), len, findMax);
+            return Js::JavascriptNumber::ToVarNoCheck(static_cast<T>(result), scriptContext);
+        }
+        else if (!checkNaNAndNegZero && sizeof(T) == sizeof(uint16) && !std::is_signed<T>::value)
+        {
+            // Uint16Array
+            uint16_t result = NeonAccel::NeonMinMaxUint16(
+                reinterpret_cast<const uint16_t*>(typedBuffer), len, findMax);
+            return Js::JavascriptNumber::ToVarNoCheck(static_cast<T>(result), scriptContext);
+        }
+        else if (!checkNaNAndNegZero && sizeof(T) == sizeof(int8) && std::is_signed<T>::value)
+        {
+            // Int8Array
+            int8_t result = NeonAccel::NeonMinMaxInt8(
+                reinterpret_cast<const int8_t*>(typedBuffer), len, findMax);
+            return Js::JavascriptNumber::ToVarNoCheck(static_cast<T>(result), scriptContext);
+        }
+        else if (!checkNaNAndNegZero && sizeof(T) == sizeof(uint8) && !std::is_signed<T>::value)
+        {
+            // Uint8Array / Uint8ClampedArray
+            uint8_t result = NeonAccel::NeonMinMaxUint8(
+                reinterpret_cast<const uint8_t*>(typedBuffer), len, findMax);
+            return Js::JavascriptNumber::ToVarNoCheck(static_cast<T>(result), scriptContext);
+        }
+        // Fall through to scalar path for any unmatched type
+#endif // CHAKRA_NEON_AVAILABLE
+
+        // ---- Scalar fallback path ----
         T currentRes = typedBuffer[0];
         for (uint i = 0; i < len; i++)
         {

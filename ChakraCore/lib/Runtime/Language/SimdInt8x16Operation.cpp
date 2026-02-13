@@ -7,16 +7,23 @@
 
 #if defined(_M_ARM32_OR_ARM64)
 
+#include "NeonAccel.h"
+
 namespace Js
 {
     SIMDValue SIMDInt8x16Operation::OpInt8x16(int8 values[])
     {
         SIMDValue result = {0, 0, 0, 0};
 
+#if CHAKRA_NEON_AVAILABLE
+        int8x16_t v = vld1q_s8(reinterpret_cast<const int8_t*>(values));
+        vst1q_s8(result.i8, v);
+#else
         for (uint8 i = 0; i < 16; i++)
         {
             result.i8[i] = values[i];
         }
+#endif
         
         return result;
     }
@@ -25,7 +32,11 @@ namespace Js
     {
         SIMDValue result;
 
+#if CHAKRA_NEON_AVAILABLE
+        vst1q_s8(result.i8, vdupq_n_s8(x));
+#else
         result.i8[0] = result.i8[1] = result.i8[2] = result.i8[3] = result.i8[4] = result.i8[5] = result.i8[6]= result.i8[7] = result.i8[8] = result.i8[9]= result.i8[10] = result.i8[11] = result.i8[12]= result.i8[13] = result.i8[14] = result.i8[15] = x;
+#endif
 
         return result;
     }
@@ -35,6 +46,10 @@ namespace Js
     {
         SIMDValue result;
 
+#if CHAKRA_NEON_AVAILABLE
+        int8x16_t va = vld1q_s8(value.i8);
+        vst1q_s8(result.i8, vnegq_s8(va));
+#else
         result.i8[0]  = -1 * value.i8[0];
         result.i8[1]  = -1 * value.i8[1];
         result.i8[2]  = -1 * value.i8[2];
@@ -51,6 +66,7 @@ namespace Js
         result.i8[13] = -1 * value.i8[13];
         result.i8[14] = -1 * value.i8[14];
         result.i8[15] = -1 * value.i8[15];
+#endif
 
         return result;
     }
@@ -59,10 +75,16 @@ namespace Js
     {
         SIMDValue result;
 
+#if CHAKRA_NEON_AVAILABLE
+        int8x16_t va = vld1q_s8(aValue.i8);
+        int8x16_t vb = vld1q_s8(bValue.i8);
+        vst1q_s8(result.i8, vaddq_s8(va, vb));
+#else
         for(uint idx = 0; idx < 16; ++idx)
         {
             result.i8[idx] = aValue.i8[idx] + bValue.i8[idx];
         }
+#endif
         return result;
     }
 
@@ -70,10 +92,16 @@ namespace Js
     {
         SIMDValue result;
 
+#if CHAKRA_NEON_AVAILABLE
+        int8x16_t va = vld1q_s8(aValue.i8);
+        int8x16_t vb = vld1q_s8(bValue.i8);
+        vst1q_s8(result.i8, vsubq_s8(va, vb));
+#else
         for(uint idx = 0; idx < 16; ++idx)
         {
             result.i8[idx] = aValue.i8[idx] - bValue.i8[idx];
         }
+#endif
 
         return result;
     }
@@ -82,10 +110,16 @@ namespace Js
     {
         SIMDValue result;
 
+#if CHAKRA_NEON_AVAILABLE
+        int8x16_t va = vld1q_s8(aValue.i8);
+        int8x16_t vb = vld1q_s8(bValue.i8);
+        vst1q_s8(result.i8, vmulq_s8(va, vb));
+#else
         for(uint idx = 0; idx < 16; ++idx)
         {
             result.i8[idx] = aValue.i8[idx] * bValue.i8[idx];
         }
+#endif
 
         return result;
     }
@@ -93,6 +127,12 @@ namespace Js
     SIMDValue SIMDInt8x16Operation::OpAddSaturate(const SIMDValue& aValue, const SIMDValue& bValue)
     {
         SIMDValue result;
+
+#if CHAKRA_NEON_AVAILABLE
+        int8x16_t va = vld1q_s8(aValue.i8);
+        int8x16_t vb = vld1q_s8(bValue.i8);
+        vst1q_s8(result.i8, vqaddq_s8(va, vb));
+#else
         int mask = 0x80;
         for (uint idx = 0; idx < 16; ++idx)
         {
@@ -110,12 +150,19 @@ namespace Js
                 result.i8[idx] = static_cast<int8>(mask);
             }
         }
+#endif
         return result;
     }
 
     SIMDValue SIMDInt8x16Operation::OpSubSaturate(const SIMDValue& aValue, const SIMDValue& bValue)
     {
         SIMDValue result;
+
+#if CHAKRA_NEON_AVAILABLE
+        int8x16_t va = vld1q_s8(aValue.i8);
+        int8x16_t vb = vld1q_s8(bValue.i8);
+        vst1q_s8(result.i8, vqsubq_s8(va, vb));
+#else
         int mask = 0x80;
         for (uint idx = 0; idx < 16; ++idx)
         {
@@ -133,6 +180,7 @@ namespace Js
                 result.i8[idx] = static_cast<int8>(mask);
             }
         }
+#endif
         return result;
     }
 
@@ -140,10 +188,16 @@ namespace Js
     {
         SIMDValue result;
 
+#if CHAKRA_NEON_AVAILABLE
+        int8x16_t va = vld1q_s8(aValue.i8);
+        int8x16_t vb = vld1q_s8(bValue.i8);
+        vst1q_s8(result.i8, vminq_s8(va, vb));
+#else
         for (uint idx = 0; idx < 16; ++idx)
         {
             result.i8[idx] = (aValue.i8[idx] < bValue.i8[idx]) ? aValue.i8[idx] : bValue.i8[idx];
         }
+#endif
 
         return result;
     }
@@ -152,10 +206,16 @@ namespace Js
     {
         SIMDValue result;
 
+#if CHAKRA_NEON_AVAILABLE
+        int8x16_t va = vld1q_s8(aValue.i8);
+        int8x16_t vb = vld1q_s8(bValue.i8);
+        vst1q_s8(result.i8, vmaxq_s8(va, vb));
+#else
         for (uint idx = 0; idx < 16; ++idx)
         {
             result.i8[idx] = (aValue.i8[idx] > bValue.i8[idx]) ? aValue.i8[idx] : bValue.i8[idx];
         }
+#endif
 
         return result;
     }
@@ -164,10 +224,16 @@ namespace Js
     {
         SIMDValue result;
 
+#if CHAKRA_NEON_AVAILABLE
+        int8x16_t va = vld1q_s8(aValue.i8);
+        int8x16_t vb = vld1q_s8(bValue.i8);
+        vst1q_s8(result.i8, vreinterpretq_s8_u8(vcltq_s8(va, vb)));
+#else
         for(uint idx = 0; idx < 16; ++idx)
         {
             result.i8[idx] = (aValue.i8[idx] < bValue.i8[idx]) ? 0xff : 0x0;
         }
+#endif
         return result;
     }
 
@@ -175,10 +241,16 @@ namespace Js
     {
         SIMDValue result;
 
+#if CHAKRA_NEON_AVAILABLE
+        int8x16_t va = vld1q_s8(aValue.i8);
+        int8x16_t vb = vld1q_s8(bValue.i8);
+        vst1q_s8(result.i8, vreinterpretq_s8_u8(vcleq_s8(va, vb)));
+#else
         for (uint idx = 0; idx < 16; ++idx)
         {
             result.i8[idx] = (aValue.i8[idx] <= bValue.i8[idx]) ? 0xff : 0x0;
         }
+#endif
         return result;
     }
 
@@ -186,10 +258,16 @@ namespace Js
     {
         SIMDValue result;
 
+#if CHAKRA_NEON_AVAILABLE
+        int8x16_t va = vld1q_s8(aValue.i8);
+        int8x16_t vb = vld1q_s8(bValue.i8);
+        vst1q_s8(result.i8, vreinterpretq_s8_u8(vceqq_s8(va, vb)));
+#else
         for(uint idx = 0; idx < 16; ++idx)
         {
             result.i8[idx] = (aValue.i8[idx] == bValue.i8[idx]) ? 0xff : 0x0;
         }
+#endif
 
         return result;
     }
@@ -199,10 +277,18 @@ namespace Js
     {
         SIMDValue result;
 
+#if CHAKRA_NEON_AVAILABLE
+        int8x16_t va = vld1q_s8(aValue.i8);
+        int8x16_t vb = vld1q_s8(bValue.i8);
+        // NotEqual = bitwise NOT of Equal
+        uint8x16_t eq = vceqq_s8(va, vb);
+        vst1q_s8(result.i8, vreinterpretq_s8_u8(vmvnq_u8(eq)));
+#else
         for (uint idx = 0; idx < 16; ++idx)
         {
             result.i8[idx] = (aValue.i8[idx] != bValue.i8[idx]) ? 0xff : 0x0;
         }
+#endif
 
         return result;
     }
@@ -212,10 +298,16 @@ namespace Js
     {
         SIMDValue result;
 
+#if CHAKRA_NEON_AVAILABLE
+        int8x16_t va = vld1q_s8(aValue.i8);
+        int8x16_t vb = vld1q_s8(bValue.i8);
+        vst1q_s8(result.i8, vreinterpretq_s8_u8(vcgtq_s8(va, vb)));
+#else
         for(uint idx = 0; idx < 16; ++idx)
         {
             result.i8[idx] = (aValue.i8[idx] > bValue.i8[idx]) ? 0xff : 0x0;
         }
+#endif
 
         return result;
     }
@@ -224,10 +316,16 @@ namespace Js
     {
         SIMDValue result;
 
+#if CHAKRA_NEON_AVAILABLE
+        int8x16_t va = vld1q_s8(aValue.i8);
+        int8x16_t vb = vld1q_s8(bValue.i8);
+        vst1q_s8(result.i8, vreinterpretq_s8_u8(vcgeq_s8(va, vb)));
+#else
         for (uint idx = 0; idx < 16; ++idx)
         {
             result.i8[idx] = (aValue.i8[idx] >= bValue.i8[idx]) ? 0xff : 0x0;
         }
+#endif
 
         return result;
     }
@@ -238,10 +336,16 @@ namespace Js
 
         count = count & SIMDUtils::SIMDGetShiftAmountMask(1);
 
+#if CHAKRA_NEON_AVAILABLE
+        int8x16_t va = vld1q_s8(value.i8);
+        int8x16_t vcount = vdupq_n_s8(static_cast<int8_t>(count));
+        vst1q_s8(result.i8, vshlq_s8(va, vcount));
+#else
         for(uint idx = 0; idx < 16; ++idx)
         {
             result.i8[idx] = value.i8[idx] << count;
         }
+#endif
 
         return result;
     }
@@ -252,10 +356,17 @@ namespace Js
 
         count = count & SIMDUtils::SIMDGetShiftAmountMask(1);
 
+#if CHAKRA_NEON_AVAILABLE
+        int8x16_t va = vld1q_s8(value.i8);
+        // Negative shift count = right shift for vshlq
+        int8x16_t vcount = vdupq_n_s8(static_cast<int8_t>(-count));
+        vst1q_s8(result.i8, vshlq_s8(va, vcount));
+#else
         for(uint idx = 0; idx < 16; ++idx)
         {
             result.i8[idx] = value.i8[idx] >> count;
         }
+#endif
 
         return result;
     }
@@ -264,10 +375,20 @@ namespace Js
     {
         SIMDValue result;
 
+#if CHAKRA_NEON_AVAILABLE
+        // Use bitwise select: for each bit, if mask bit is 1 pick tV, else fV
+        // The original scalar code checks (mV.i8[idx] == 1), but the SIMD semantics
+        // use all-ones (-1 / 0xFF) masks, so we use vbslq which does bitwise selection.
+        uint8x16_t mask = vld1q_u8(reinterpret_cast<const uint8_t*>(mV.i8));
+        uint8x16_t trueVals = vld1q_u8(reinterpret_cast<const uint8_t*>(tV.i8));
+        uint8x16_t falseVals = vld1q_u8(reinterpret_cast<const uint8_t*>(fV.i8));
+        vst1q_u8(reinterpret_cast<uint8_t*>(result.i8), vbslq_u8(mask, trueVals, falseVals));
+#else
         for (uint idx = 0; idx < 16; ++idx)
         {
             result.i8[idx] = (mV.i8[idx] == 1) ? tV.i8[idx] : fV.i8[idx];
         }
+#endif
         return result;
     }
 

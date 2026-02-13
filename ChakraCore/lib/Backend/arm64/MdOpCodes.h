@@ -132,3 +132,174 @@ MACRO(FSUB,        Reg3,      0,              UNUSED,   LEGAL_REG3,     UNUSED, 
 MACRO(FSQRT,       Reg2,      0,              UNUSED,   LEGAL_REG2,     UNUSED,   D___)
 MACRO(FSTR,        Reg2,      0,              UNUSED,   LEGAL_STORE,    UNUSED,   DS__)
 MACRO(FSTP,        Reg2,      0,              UNUSED,   LEGAL_STOREP,   UNUSED,   DS__)
+
+//-------------------------------------------------------------------------------------------------------
+// NEON Vector Instructions (Phase 2)
+//
+// These opcodes use the D0-D29 float register file in 128-bit (Q/V) mode.
+// The encoder maps them to the EmitNeon* functions in ARM64NeonEncoder.h.
+// Register allocation reuses the existing float register pool since D and V
+// registers share the same physical storage on ARM64.
+//-------------------------------------------------------------------------------------------------------
+
+// --- Data Movement ---
+// DUP Vd.<T>, Rn  — broadcast general-purpose register to all vector lanes
+MACRO(NEON_DUP,       Reg2,      0,              UNUSED,   LEGAL_REG2,     UNUSED,   D___)
+// MOVI Vd.<T>, #imm — move immediate into all vector lanes
+MACRO(NEON_MOVI,      Reg2,      0,              UNUSED,   LEGAL_REG2,     UNUSED,   D___)
+// MOV Vd.<T>, Vn.<T> — vector register move (alias for ORR Vd, Vn, Vn)
+MACRO(NEON_MOV,       Reg2,      0,              UNUSED,   LEGAL_REG2,     UNUSED,   DM__)
+
+// --- Load / Store ---
+// LD1 {Vt.<T>}, [Xn] — load single vector from memory (no writeback)
+MACRO(NEON_LD1,       Reg2,      0,              UNUSED,   LEGAL_LOAD,     UNUSED,   DL__)
+// ST1 {Vt.<T>}, [Xn] — store single vector to memory (no writeback)
+MACRO(NEON_ST1,       Reg2,      0,              UNUSED,   LEGAL_STORE,    UNUSED,   DS__)
+// LDR Qt, [Xn, #imm] — 128-bit vector load with unsigned offset
+MACRO(NEON_LDR_Q,     Reg2,      0,              UNUSED,   LEGAL_LOAD,     UNUSED,   DL__)
+// STR Qt, [Xn, #imm] — 128-bit vector store with unsigned offset
+MACRO(NEON_STR_Q,     Reg2,      0,              UNUSED,   LEGAL_STORE,    UNUSED,   DS__)
+
+// --- Integer Arithmetic (vector) ---
+// ADD Vd.<T>, Vn.<T>, Vm.<T> — vector integer add
+MACRO(NEON_ADD,       Reg3,      0,              UNUSED,   LEGAL_REG3,     UNUSED,   D___)
+// SUB Vd.<T>, Vn.<T>, Vm.<T> — vector integer subtract
+MACRO(NEON_SUB,       Reg3,      0,              UNUSED,   LEGAL_REG3,     UNUSED,   D___)
+// MUL Vd.<T>, Vn.<T>, Vm.<T> — vector integer multiply
+MACRO(NEON_MUL,       Reg3,      0,              UNUSED,   LEGAL_REG3,     UNUSED,   D___)
+// NEG Vd.<T>, Vn.<T> — vector integer negate
+MACRO(NEON_NEG,       Reg2,      0,              UNUSED,   LEGAL_REG2,     UNUSED,   D___)
+// ABS Vd.<T>, Vn.<T> — vector integer absolute value
+MACRO(NEON_ABS,       Reg2,      0,              UNUSED,   LEGAL_REG2,     UNUSED,   D___)
+
+// --- Floating-Point Arithmetic (vector) ---
+// FADD Vd.<T>, Vn.<T>, Vm.<T> — vector float add (4S or 2D)
+MACRO(NEON_FADD,      Reg3,      0,              UNUSED,   LEGAL_REG3,     UNUSED,   D___)
+// FSUB Vd.<T>, Vn.<T>, Vm.<T> — vector float subtract
+MACRO(NEON_FSUB,      Reg3,      0,              UNUSED,   LEGAL_REG3,     UNUSED,   D___)
+// FMUL Vd.<T>, Vn.<T>, Vm.<T> — vector float multiply
+MACRO(NEON_FMUL,      Reg3,      0,              UNUSED,   LEGAL_REG3,     UNUSED,   D___)
+// FDIV Vd.<T>, Vn.<T>, Vm.<T> — vector float divide
+MACRO(NEON_FDIV,      Reg3,      0,              UNUSED,   LEGAL_REG3,     UNUSED,   D___)
+// FNEG Vd.<T>, Vn.<T> — vector float negate
+MACRO(NEON_FNEG,      Reg2,      0,              UNUSED,   LEGAL_REG2,     UNUSED,   D___)
+// FABS Vd.<T>, Vn.<T> — vector float absolute value
+MACRO(NEON_FABS,      Reg2,      0,              UNUSED,   LEGAL_REG2,     UNUSED,   D___)
+// FSQRT Vd.<T>, Vn.<T> — vector float square root
+MACRO(NEON_FSQRT,     Reg2,      0,              UNUSED,   LEGAL_REG2,     UNUSED,   D___)
+// FMLA Vd.<T>, Vn.<T>, Vm.<T> — vector fused multiply-accumulate (Vd += Vn * Vm)
+MACRO(NEON_FMLA,      Reg3,      0,              UNUSED,   LEGAL_REG3,     UNUSED,   D___)
+// FMLS Vd.<T>, Vn.<T>, Vm.<T> — vector fused multiply-subtract (Vd -= Vn * Vm)
+MACRO(NEON_FMLS,      Reg3,      0,              UNUSED,   LEGAL_REG3,     UNUSED,   D___)
+
+// --- Min / Max (vector) ---
+// SMIN Vd.<T>, Vn.<T>, Vm.<T> — vector signed integer minimum
+MACRO(NEON_SMIN,      Reg3,      0,              UNUSED,   LEGAL_REG3,     UNUSED,   D___)
+// SMAX Vd.<T>, Vn.<T>, Vm.<T> — vector signed integer maximum
+MACRO(NEON_SMAX,      Reg3,      0,              UNUSED,   LEGAL_REG3,     UNUSED,   D___)
+// UMIN Vd.<T>, Vn.<T>, Vm.<T> — vector unsigned integer minimum
+MACRO(NEON_UMIN,      Reg3,      0,              UNUSED,   LEGAL_REG3,     UNUSED,   D___)
+// UMAX Vd.<T>, Vn.<T>, Vm.<T> — vector unsigned integer maximum
+MACRO(NEON_UMAX,      Reg3,      0,              UNUSED,   LEGAL_REG3,     UNUSED,   D___)
+// FMIN Vd.<T>, Vn.<T>, Vm.<T> — vector float minimum
+MACRO(NEON_FMIN,      Reg3,      0,              UNUSED,   LEGAL_REG3,     UNUSED,   D___)
+// FMAX Vd.<T>, Vn.<T>, Vm.<T> — vector float maximum
+MACRO(NEON_FMAX,      Reg3,      0,              UNUSED,   LEGAL_REG3,     UNUSED,   D___)
+// FMINNM Vd.<T>, Vn.<T>, Vm.<T> — vector float min (NaN-propagating)
+MACRO(NEON_FMINNM,    Reg3,      0,              UNUSED,   LEGAL_REG3,     UNUSED,   D___)
+// FMAXNM Vd.<T>, Vn.<T>, Vm.<T> — vector float max (NaN-propagating)
+MACRO(NEON_FMAXNM,    Reg3,      0,              UNUSED,   LEGAL_REG3,     UNUSED,   D___)
+
+// --- Horizontal Reduction ---
+// ADDV Sd, Vn.<T> — add across vector lanes (integer)
+MACRO(NEON_ADDV,      Reg2,      0,              UNUSED,   LEGAL_REG2,     UNUSED,   D___)
+// SMAXV Sd, Vn.<T> — signed maximum across vector lanes
+MACRO(NEON_SMAXV,     Reg2,      0,              UNUSED,   LEGAL_REG2,     UNUSED,   D___)
+// SMINV Sd, Vn.<T> — signed minimum across vector lanes
+MACRO(NEON_SMINV,     Reg2,      0,              UNUSED,   LEGAL_REG2,     UNUSED,   D___)
+// FADDP Vd.<T>, Vn.<T>, Vm.<T> — float pairwise add
+MACRO(NEON_FADDP,     Reg3,      0,              UNUSED,   LEGAL_REG3,     UNUSED,   D___)
+// FMAXNMV Sd, Vn.4S — float max across vector (NaN-propagating)
+MACRO(NEON_FMAXNMV,   Reg2,      0,              UNUSED,   LEGAL_REG2,     UNUSED,   D___)
+// FMINNMV Sd, Vn.4S — float min across vector (NaN-propagating)
+MACRO(NEON_FMINNMV,   Reg2,      0,              UNUSED,   LEGAL_REG2,     UNUSED,   D___)
+
+// --- Comparison (vector) ---
+// CMEQ Vd.<T>, Vn.<T>, Vm.<T> — compare equal
+MACRO(NEON_CMEQ,      Reg3,      0,              UNUSED,   LEGAL_REG3,     UNUSED,   D___)
+// CMGT Vd.<T>, Vn.<T>, Vm.<T> — compare signed greater-than
+MACRO(NEON_CMGT,      Reg3,      0,              UNUSED,   LEGAL_REG3,     UNUSED,   D___)
+// CMGE Vd.<T>, Vn.<T>, Vm.<T> — compare signed greater-than-or-equal
+MACRO(NEON_CMGE,      Reg3,      0,              UNUSED,   LEGAL_REG3,     UNUSED,   D___)
+// CMEQ Vd.<T>, Vn.<T>, #0 — compare equal to zero
+MACRO(NEON_CMEQ0,     Reg2,      0,              UNUSED,   LEGAL_REG2,     UNUSED,   D___)
+// FCMEQ Vd.<T>, Vn.<T>, Vm.<T> — float compare equal
+MACRO(NEON_FCMEQ,     Reg3,      0,              UNUSED,   LEGAL_REG3,     UNUSED,   D___)
+// FCMGT Vd.<T>, Vn.<T>, Vm.<T> — float compare greater-than
+MACRO(NEON_FCMGT,     Reg3,      0,              UNUSED,   LEGAL_REG3,     UNUSED,   D___)
+// FCMGE Vd.<T>, Vn.<T>, Vm.<T> — float compare greater-than-or-equal
+MACRO(NEON_FCMGE,     Reg3,      0,              UNUSED,   LEGAL_REG3,     UNUSED,   D___)
+
+// --- Bitwise Logic (vector) ---
+// AND Vd.16B, Vn.16B, Vm.16B — vector bitwise AND
+MACRO(NEON_AND,       Reg3,      0,              UNUSED,   LEGAL_REG3,     UNUSED,   D___)
+// ORR Vd.16B, Vn.16B, Vm.16B — vector bitwise OR
+MACRO(NEON_ORR,       Reg3,      0,              UNUSED,   LEGAL_REG3,     UNUSED,   D___)
+// EOR Vd.16B, Vn.16B, Vm.16B — vector bitwise XOR
+MACRO(NEON_EOR,       Reg3,      0,              UNUSED,   LEGAL_REG3,     UNUSED,   D___)
+// NOT Vd.16B, Vn.16B — vector bitwise NOT
+MACRO(NEON_NOT,       Reg2,      0,              UNUSED,   LEGAL_REG2,     UNUSED,   D___)
+// BSL Vd.16B, Vn.16B, Vm.16B — bitwise select (Vd = (Vd & Vn) | (~Vd & Vm))
+MACRO(NEON_BSL,       Reg3,      0,              UNUSED,   LEGAL_REG3,     UNUSED,   D___)
+// BIC Vd.16B, Vn.16B, Vm.16B — bitwise clear (Vd = Vn & ~Vm)
+MACRO(NEON_BIC,       Reg3,      0,              UNUSED,   LEGAL_REG3,     UNUSED,   D___)
+
+// --- Shift (vector) ---
+// SHL Vd.<T>, Vn.<T>, #shift — vector shift left by immediate
+MACRO(NEON_SHL,       Reg3,      0,              UNUSED,   LEGAL_REG3,     UNUSED,   D___)
+// SSHR Vd.<T>, Vn.<T>, #shift — vector signed shift right by immediate
+MACRO(NEON_SSHR,      Reg3,      0,              UNUSED,   LEGAL_REG3,     UNUSED,   D___)
+// USHR Vd.<T>, Vn.<T>, #shift — vector unsigned shift right by immediate
+MACRO(NEON_USHR,      Reg3,      0,              UNUSED,   LEGAL_REG3,     UNUSED,   D___)
+
+// --- Permute / Shuffle ---
+// REV64 Vd.<T>, Vn.<T> — reverse elements within 64-bit doublewords
+MACRO(NEON_REV64,     Reg2,      0,              UNUSED,   LEGAL_REG2,     UNUSED,   D___)
+// REV32 Vd.<T>, Vn.<T> — reverse elements within 32-bit words
+MACRO(NEON_REV32,     Reg2,      0,              UNUSED,   LEGAL_REG2,     UNUSED,   D___)
+// REV16 Vd.<T>, Vn.<T> — reverse elements within 16-bit halfwords
+MACRO(NEON_REV16,     Reg2,      0,              UNUSED,   LEGAL_REG2,     UNUSED,   D___)
+// EXT Vd.16B, Vn.16B, Vm.16B, #idx — extract from pair of vectors
+MACRO(NEON_EXT,       Reg3,      0,              UNUSED,   LEGAL_REG3,     UNUSED,   D___)
+// TBL Vd.16B, {Vn.16B}, Vm.16B — table lookup
+MACRO(NEON_TBL,       Reg3,      0,              UNUSED,   LEGAL_REG3,     UNUSED,   D___)
+
+// --- Type Conversion (vector) ---
+// SCVTF Vd.<T>, Vn.<T> — vector signed int to float
+MACRO(NEON_SCVTF,     Reg2,      0,              UNUSED,   LEGAL_REG2,     UNUSED,   D___)
+// UCVTF Vd.<T>, Vn.<T> — vector unsigned int to float
+MACRO(NEON_UCVTF,     Reg2,      0,              UNUSED,   LEGAL_REG2,     UNUSED,   D___)
+// FCVTZS Vd.<T>, Vn.<T> — vector float to signed int (round toward zero)
+MACRO(NEON_FCVTZS,    Reg2,      0,              UNUSED,   LEGAL_REG2,     UNUSED,   D___)
+// FCVTZU Vd.<T>, Vn.<T> — vector float to unsigned int (round toward zero)
+MACRO(NEON_FCVTZU,    Reg2,      0,              UNUSED,   LEGAL_REG2,     UNUSED,   D___)
+
+// --- Element Insert / Extract ---
+// INS Vd.<T>[idx], Rn — insert general-purpose register into vector lane
+MACRO(NEON_INS,       Reg3,      0,              UNUSED,   LEGAL_REG3,     UNUSED,   D___)
+// UMOV Rd, Vn.<T>[idx] — move vector lane to general-purpose register (unsigned)
+MACRO(NEON_UMOV,      Reg3,      0,              UNUSED,   LEGAL_REG3,     UNUSED,   D___)
+// DUP Vd.<T>, Vn.<T>[idx] — duplicate vector element to all lanes
+MACRO(NEON_DUP_ELEM,  Reg3,      0,              UNUSED,   LEGAL_REG3,     UNUSED,   D___)
+
+// --- Widen / Narrow ---
+// SXTL Vd.<Td>, Vn.<Ts> — signed extend long (alias for SSHLL #0)
+MACRO(NEON_SXTL,      Reg2,      0,              UNUSED,   LEGAL_REG2,     UNUSED,   D___)
+// UXTL Vd.<Td>, Vn.<Ts> — unsigned extend long (alias for USHLL #0)
+MACRO(NEON_UXTL,      Reg2,      0,              UNUSED,   LEGAL_REG2,     UNUSED,   D___)
+// XTN Vd.<Ts>, Vn.<Td> — extract narrow
+MACRO(NEON_XTN,       Reg2,      0,              UNUSED,   LEGAL_REG2,     UNUSED,   D___)
+
+// --- Prefetch ---
+// PRFM <type>, [Xn, #imm] — prefetch memory (PLDL1KEEP, PSTL1KEEP, etc.)
+MACRO(NEON_PRFM,      Reg2,      0,              UNUSED,   LEGAL_LOAD,     UNUSED,   DL__)

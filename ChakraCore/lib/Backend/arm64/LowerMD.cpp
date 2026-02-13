@@ -7,6 +7,10 @@
 #include "Backend.h"
 #include "Language/JavascriptFunctionArgIndex.h"
 
+#if defined(_ARM64_) && defined(__APPLE__)
+extern "C" void arm64_DebugTrampoline(void);
+#endif
+
 const Js::OpCode LowererMD::MDUncondBranchOpcode = Js::OpCode::B;
 const Js::OpCode LowererMD::MDMultiBranchOpcode = Js::OpCode::BR;
 const Js::OpCode LowererMD::MDTestOpcode = Js::OpCode::TST;
@@ -606,13 +610,13 @@ LowererMD::LowerCallI(IR::Instr * callInstr, ushort callFlags, bool isHelper, IR
     Lowerer::InsertMove(opndParam, functionObjOpnd, callInstr);
 
 #if defined(__APPLE__)
-    // DarwinPCS: also store function object (slot 0) to outgoing stack area
-    // so that variadic callees can find it via va_list.
+    if (callInstr->m_opcode == Js::OpCode::CallDirect)
     {
         IntConstType offset = 0 * MachRegInt;
         IR::RegOpnd * spBase = IR::RegOpnd::New(nullptr, this->GetRegStackPointer(), TyMachReg, this->m_func);
         IR::IndirOpnd * stackOpnd = IR::IndirOpnd::New(spBase, int32(offset), TyMachReg, this->m_func);
-        Lowerer::InsertMove(stackOpnd, opndParam, callInstr);
+        IR::Instr * storeInstr = IR::Instr::New(Js::OpCode::STR, stackOpnd, opndParam->AsRegOpnd(), this->m_func);
+        callInstr->InsertBefore(storeInstr);
 
         if (this->m_func->m_argSlotsForFunctionsCalled < 1)
         {
@@ -699,12 +703,13 @@ LowererMD::LowerCallArgs(IR::Instr *callInstr, IR::Instr *stackParamInsert, usho
         if (opndParam->IsRegOpnd())
         {
             callInstr->InsertBefore(argInstr);
+
 #if defined(__APPLE__)
-            // DarwinPCS: variadic C++ callees (like ExternalFunctionThunk) use va_list
-            // to find args on the stack, not in registers. The JIT calling convention
-            // puts args in x0-x7, but we must ALSO store them to the outgoing arg area
-            // on the stack so that DECLARE_ARGS_VARARRAY can find them via va_list.
-            // This mirrors what arm64_CallFunction does in assembly.
+            // DarwinPCS: Variadic arguments are always passed on the stack.
+            // For CallDirect (calls to C++ variadic helpers), we MUST shadow-store the register arguments
+            // to the stack so that va_start can find them.
+            // For CallI (JS->JS calls), we MUST NOT shadow-store, because the stack slots are needed for overflow args.
+            if (callInstr->m_opcode == Js::OpCode::CallDirect)
             {
                 Js::ArgSlot stackSlot = argSlotNum + extraParams;
                 IntConstType offset = stackSlot * MachRegInt;
@@ -713,6 +718,7 @@ LowererMD::LowerCallArgs(IR::Instr *callInstr, IR::Instr *stackParamInsert, usho
                 IR::Instr * storeInstr = IR::Instr::New(Js::OpCode::STR, stackOpnd, opndParam->AsRegOpnd(), this->m_func);
                 callInstr->InsertBefore(storeInstr);
 
+                 // Ensure stack is large enough to cover this slot
                 if (this->m_func->m_argSlotsForFunctionsCalled < (uint32)(stackSlot + 1))
                 {
                     this->m_func->m_argSlotsForFunctionsCalled = stackSlot + 1;
@@ -752,17 +758,18 @@ LowererMD::LowerCallArgs(IR::Instr *callInstr, IR::Instr *stackParamInsert, usho
     Lowerer::InsertMove(opndParam, opndCallInfo, callInstr);
 
 #if defined(__APPLE__)
-    // DarwinPCS: also store callInfo (slot 1) to outgoing stack area
-    // so that variadic callees can find it via va_list.
+    if (callInstr->m_opcode == Js::OpCode::CallDirect)
     {
-        IntConstType offset = extraParams * MachRegInt;
+        Js::ArgSlot stackSlot = extraParams;
+        IntConstType offset = stackSlot * MachRegInt;
         IR::RegOpnd * spBase = IR::RegOpnd::New(nullptr, this->GetRegStackPointer(), TyMachReg, this->m_func);
         IR::IndirOpnd * stackOpnd = IR::IndirOpnd::New(spBase, int32(offset), TyMachReg, this->m_func);
-        Lowerer::InsertMove(stackOpnd, opndParam, callInstr);
+        IR::Instr * storeInstr = IR::Instr::New(Js::OpCode::STR, stackOpnd, opndParam->AsRegOpnd(), this->m_func);
+        callInstr->InsertBefore(storeInstr);
 
-        if (this->m_func->m_argSlotsForFunctionsCalled < (uint32)(extraParams + 1))
+        if (this->m_func->m_argSlotsForFunctionsCalled < (uint32)(stackSlot + 1))
         {
-            this->m_func->m_argSlotsForFunctionsCalled = extraParams + 1;
+            this->m_func->m_argSlotsForFunctionsCalled = stackSlot + 1;
         }
     }
 #endif
@@ -1322,26 +1329,11 @@ LowererMD::LowerEntryInstr(IR::EntryInstr * entryInstr)
             if (layout.SavedDoubles().Test(curReg))
             {
                 RegNum nextReg = RegNum(curReg + 1);
-#if defined(_WIN32)
-                // Windows: use STP (paired store) as before
                 IR::Instr * instrStp = IR::Instr::New(Js::OpCode::FSTP,
                     IR::IndirOpnd::New(spOpnd, curOffset, TyMachReg, this->m_func),
                     IR::RegOpnd::New(curReg, TyMachDouble, this->m_func),
                     IR::RegOpnd::New(nextReg, TyMachDouble, this->m_func), this->m_func);
                 insertInstr->InsertBefore(instrStp);
-#else
-                // Apple Silicon: use individual STR for each register.
-                // STP/LDP in dynamically generated code prologs can cause
-                // instability with Apple's unwinder and memory subsystem.
-                IR::Instr * instrStr1 = IR::Instr::New(Js::OpCode::FSTR,
-                    IR::IndirOpnd::New(spOpnd, curOffset, TyMachReg, this->m_func),
-                    IR::RegOpnd::New(curReg, TyMachDouble, this->m_func), this->m_func);
-                insertInstr->InsertBefore(instrStr1);
-                IR::Instr * instrStr2 = IR::Instr::New(Js::OpCode::FSTR,
-                    IR::IndirOpnd::New(spOpnd, curOffset + MachRegDouble, TyMachReg, this->m_func),
-                    IR::RegOpnd::New(nextReg, TyMachDouble, this->m_func), this->m_func);
-                insertInstr->InsertBefore(instrStr2);
-#endif
                 curOffset += 2 * MachRegDouble;
             }
         }
@@ -1356,23 +1348,11 @@ LowererMD::LowerEntryInstr(IR::EntryInstr * entryInstr)
             if (layout.SavedRegisters().Test(curReg))
             {
                 RegNum nextReg = RegNum(curReg + 1);
-#if defined(_WIN32)
                 IR::Instr * instrStp = IR::Instr::New(Js::OpCode::STP,
                     IR::IndirOpnd::New(spOpnd, curOffset, TyMachReg, this->m_func),
                     IR::RegOpnd::New(curReg, TyMachReg, this->m_func),
                     IR::RegOpnd::New(nextReg, TyMachReg, this->m_func), this->m_func);
                 insertInstr->InsertBefore(instrStp);
-#else
-                // Apple Silicon: use individual STR for each register
-                IR::Instr * instrStr1 = IR::Instr::New(Js::OpCode::STR,
-                    IR::IndirOpnd::New(spOpnd, curOffset, TyMachReg, this->m_func),
-                    IR::RegOpnd::New(curReg, TyMachReg, this->m_func), this->m_func);
-                insertInstr->InsertBefore(instrStr1);
-                IR::Instr * instrStr2 = IR::Instr::New(Js::OpCode::STR,
-                    IR::IndirOpnd::New(spOpnd, curOffset + MachRegInt, TyMachReg, this->m_func),
-                    IR::RegOpnd::New(nextReg, TyMachReg, this->m_func), this->m_func);
-                insertInstr->InsertBefore(instrStr2);
-#endif
                 curOffset += 2 * MachRegInt;
             }
         }
@@ -1383,23 +1363,11 @@ LowererMD::LowerEntryInstr(IR::EntryInstr * entryInstr)
     if (layout.HasCalls())
     {
         ULONG fpOffset = layout.FpLrOffset() - stackAllocation2;
-#if defined(_WIN32)
         // STP fp, lr, [sp, #offs]
         IR::Instr * instrStp = IR::Instr::New(Js::OpCode::STP,
             IR::IndirOpnd::New(spOpnd, fpOffset, TyMachReg, this->m_func),
             fpOpnd, IR::RegOpnd::New(RegLR, TyMachReg, this->m_func), this->m_func);
         insertInstr->InsertBefore(instrStp);
-#else
-        // Apple Silicon: use individual STR for fp and lr
-        IR::Instr * instrStrFp = IR::Instr::New(Js::OpCode::STR,
-            IR::IndirOpnd::New(spOpnd, fpOffset, TyMachReg, this->m_func),
-            fpOpnd, this->m_func);
-        insertInstr->InsertBefore(instrStrFp);
-        IR::Instr * instrStrLr = IR::Instr::New(Js::OpCode::STR,
-            IR::IndirOpnd::New(spOpnd, fpOffset + MachRegInt, TyMachReg, this->m_func),
-            IR::RegOpnd::New(RegLR, TyMachReg, this->m_func), this->m_func);
-        insertInstr->InsertBefore(instrStrLr);
-#endif
 
         // ADD fp, sp, #offs
 #if defined(_WIN32)
@@ -1556,22 +1524,11 @@ LowererMD::LowerExitInstr(IR::ExitInstr * exitInstr)
     if (layout.HasCalls())
     {
         ULONG fpOffset = layout.FpLrOffset() - stackAllocation2;
-#if defined(_WIN32)
         // LDP fp, lr, [sp, #offs]
         IR::Instr * instrLdp = IR::Instr::New(Js::OpCode::LDP, fpOpnd,
             IR::IndirOpnd::New(spOpnd, fpOffset, TyMachReg, this->m_func),
             IR::RegOpnd::New(RegLR, TyMachReg, this->m_func), this->m_func);
         exitInstr->InsertBefore(instrLdp);
-#else
-        // Apple Silicon: use individual LDR for each register
-        IR::Instr * instrLdrFp = IR::Instr::New(Js::OpCode::LDR, fpOpnd,
-            IR::IndirOpnd::New(spOpnd, fpOffset, TyMachReg, this->m_func), this->m_func);
-        exitInstr->InsertBefore(instrLdrFp);
-        IR::Instr * instrLdrLr = IR::Instr::New(Js::OpCode::LDR,
-            IR::RegOpnd::New(RegLR, TyMachReg, this->m_func),
-            IR::IndirOpnd::New(spOpnd, fpOffset + MachRegInt, TyMachReg, this->m_func), this->m_func);
-        exitInstr->InsertBefore(instrLdrLr);
-#endif
     }
 
     // Recover integer registers
@@ -1584,23 +1541,11 @@ LowererMD::LowerExitInstr(IR::ExitInstr * exitInstr)
             {
                 curOffset -= 2 * MachRegInt;
                 RegNum nextReg = RegNum(curReg + 1);
-#if defined(_WIN32)
                 IR::Instr * instrLdp = IR::Instr::New(Js::OpCode::LDP,
                     IR::RegOpnd::New(curReg, TyMachReg, this->m_func),
                     IR::IndirOpnd::New(spOpnd, curOffset, TyMachReg, this->m_func),
                     IR::RegOpnd::New(nextReg, TyMachReg, this->m_func), this->m_func);
                 exitInstr->InsertBefore(instrLdp);
-#else
-                // Apple Silicon: use individual LDR for each register
-                IR::Instr * instrLdr1 = IR::Instr::New(Js::OpCode::LDR,
-                    IR::RegOpnd::New(curReg, TyMachReg, this->m_func),
-                    IR::IndirOpnd::New(spOpnd, curOffset, TyMachReg, this->m_func), this->m_func);
-                exitInstr->InsertBefore(instrLdr1);
-                IR::Instr * instrLdr2 = IR::Instr::New(Js::OpCode::LDR,
-                    IR::RegOpnd::New(nextReg, TyMachReg, this->m_func),
-                    IR::IndirOpnd::New(spOpnd, curOffset + MachRegInt, TyMachReg, this->m_func), this->m_func);
-                exitInstr->InsertBefore(instrLdr2);
-#endif
             }
         }
     }
@@ -1615,23 +1560,11 @@ LowererMD::LowerExitInstr(IR::ExitInstr * exitInstr)
             {
                 curOffset -= 2 * MachRegDouble;
                 RegNum nextReg = RegNum(curReg + 1);
-#if defined(_WIN32)
                 IR::Instr * instrLdp = IR::Instr::New(Js::OpCode::FLDP,
                     IR::RegOpnd::New(curReg, TyMachDouble, this->m_func),
                     IR::IndirOpnd::New(spOpnd, curOffset, TyMachReg, this->m_func),
                     IR::RegOpnd::New(nextReg, TyMachDouble, this->m_func), this->m_func);
                 exitInstr->InsertBefore(instrLdp);
-#else
-                // Apple Silicon: use individual FLDR for each register
-                IR::Instr * instrLdr1 = IR::Instr::New(Js::OpCode::FLDR,
-                    IR::RegOpnd::New(curReg, TyMachDouble, this->m_func),
-                    IR::IndirOpnd::New(spOpnd, curOffset, TyMachReg, this->m_func), this->m_func);
-                exitInstr->InsertBefore(instrLdr1);
-                IR::Instr * instrLdr2 = IR::Instr::New(Js::OpCode::FLDR,
-                    IR::RegOpnd::New(nextReg, TyMachDouble, this->m_func),
-                    IR::IndirOpnd::New(spOpnd, curOffset + MachRegDouble, TyMachReg, this->m_func), this->m_func);
-                exitInstr->InsertBefore(instrLdr2);
-#endif
             }
         }
     }

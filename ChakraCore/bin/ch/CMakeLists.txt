@@ -4,6 +4,7 @@ add_executable (ch
   WScriptJsrt.cpp
   HostConfigFlags.cpp
   ChakraRtInterface.cpp
+  ConfigParserExternals.cpp
   TestHooks.cpp
   )
 

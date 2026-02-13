@@ -91,14 +91,33 @@ void InitializeJitAsmTracing()
     
     if (enabled)
     {
+        // Check if we should only trace FullJit compilations
+        const char* fullJitOnly = getenv("CHAKRA_TRACE_FULLJIT_ONLY");
+        if (fullJitOnly && (strcmp(fullJitOnly, "1") == 0 || strcmp(fullJitOnly, "true") == 0))
+        {
+            JitAsmTracer::SetFullJitOnly(true);
+        }
+        
         // Set up default output to stderr for immediate visibility
         JitAsmTracer::SetVerbosity(2); // Full analysis
         
         // Print initialization message
         fprintf(stderr, "\n=== ChakraCore JIT Assembly Tracing Enabled ===\n");
         fprintf(stderr, "Environment: Set CHAKRA_TRACE_JIT_ASM=1 to enable\n");
+        if (JitAsmTracer::GetFullJitOnly())
+        {
+            fprintf(stderr, "Filter:      FullJit only (CHAKRA_TRACE_FULLJIT_ONLY=1)\n");
+        }
+        else
+        {
+            fprintf(stderr, "Filter:      All tiers (set CHAKRA_TRACE_FULLJIT_ONLY=1 for FullJit only)\n");
+        }
         fprintf(stderr, "Functions will be traced with disassembly and analysis.\n");
+        fprintf(stderr, "Crash handler installed — traces will flush on SIGSEGV/SIGBUS/SIGABRT.\n");
         fprintf(stderr, "================================================\n\n");
+
+        // Install crash handler so traces are flushed even if the process segfaults
+        JitTraceQueue::InstallCrashHandler();
     }
 }
 
@@ -106,6 +125,8 @@ void ShutdownJitAsmTracing()
 {
     if (JitAsmTracer::IsEnabled())
     {
+        // Drain the queue and join the worker — guarantees all traces are flushed
+        JitTraceQueue::Shutdown();
         fprintf(stderr, "\n=== JIT Assembly Tracing Session Complete ===\n");
         JitAsmTracer::SetEnabled(false);
     }

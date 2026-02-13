@@ -69,11 +69,9 @@ public:
 #elif defined(_M_ARM)
     static constexpr size_t InterpreterThunkSize = 72;
 #elif defined(_M_ARM64)
-#ifdef _WIN32
+    // All ARM64 platforms: 64 bytes. Must save x0-x7 to build contiguous
+    // JavascriptCallStackLayout on the stack for InterpreterThunk.
     static constexpr size_t InterpreterThunkSize = 64;
-#else
-    static constexpr size_t InterpreterThunkSize = 48;
-#endif
 #else
     static constexpr size_t InterpreterThunkSize = 56;
 #endif

@@ -162,31 +162,27 @@ constexpr BYTE Epilog[] = {
 };
 #elif defined(_M_ARM64)
 
-#ifdef _WIN32
+// All ARM64 platforms: offsets are the same because we always save x0-x7
+// (6 instructions = 24 bytes of prolog before the ldr sequence).
 constexpr BYTE FunctionInfoOffset = 24;
 constexpr BYTE FunctionProxyOffset = 28;
 constexpr BYTE DynamicThunkAddressOffset = 32;
 constexpr BYTE ThunkAddressOffset = 36;
-#else
-constexpr BYTE FunctionInfoOffset = 8;
-constexpr BYTE FunctionProxyOffset = 12;
-constexpr BYTE DynamicThunkAddressOffset = 16;
-constexpr BYTE ThunkAddressOffset = 20;
-#endif
 
 //TODO: saravind :Implement Range Check for ARM64
 constexpr BYTE InterpreterThunk[InterpreterThunkEmitter::InterpreterThunkSize] = {
-#ifdef _WIN32
+    // All ARM64 platforms: save x0-x7 to build a contiguous JavascriptCallStackLayout
+    // on the stack: [fp,lr | x0,x1 | x2,x3 | x4,x5 | x6,x7 | caller overflow...]
+    // InterpreterThunk receives x0 = &layout (sp+16) which points to [x0,x1,x2,...,x7,overflow]
+    // matching [function, callInfo, arg0, arg1, ..., arg5, overflow_arg6, ...].
+    // On DarwinPCS (Apple ARM64), this is mandatory because the JIT puts args in registers
+    // and overflow on the stack; without homing x0-x7, InterpreterThunk can't see them.
     0xFD, 0x7B, 0xBB, 0xA9,                                         //stp         fp, lr, [sp, #-80]!   ;Prologue
     0xFD, 0x03, 0x00, 0x91,                                         //mov         fp, sp                ;update frame pointer to the stack pointer
-    0xE0, 0x07, 0x01, 0xA9,                                         //stp         x0, x1, [sp, #16]     ;Prologue again; save all registers
+    0xE0, 0x07, 0x01, 0xA9,                                         //stp         x0, x1, [sp, #16]     ;save all registers
     0xE2, 0x0F, 0x02, 0xA9,                                         //stp         x2, x3, [sp, #32]
     0xE4, 0x17, 0x03, 0xA9,                                         //stp         x4, x5, [sp, #48]
     0xE6, 0x1F, 0x04, 0xA9,                                         //stp         x6, x7, [sp, #64]
-#else
-    0xFD, 0x7B, 0xBF, 0xA9,                                         //stp         fp, lr, [sp, #-16]!   ;Prologue
-    0xFD, 0x03, 0x00, 0x91,                                         //mov         fp, sp                ;update frame pointer to the stack pointer
-#endif
     0x02, 0x00, 0x40, 0xF9,                                         //ldr         x2, [x0, #0x00]       ;offset will be replaced with Offset of FunctionInfo
     0x40, 0x00, 0x40, 0xF9,                                         //ldr         x0, [x2, #0x00]       ;offset will be replaced with Offset of FunctionProxy
     0x03, 0x00, 0x40, 0xF9,                                         //ldr         x3, [x0, #0x00]       ;offset will be replaced with offset of DynamicInterpreterThunk
@@ -208,11 +204,7 @@ constexpr BYTE Call[] = {
 };
 
 constexpr BYTE Epilog[] = {
-#ifdef _WIN32
     0xfd, 0x7b, 0xc5, 0xa8,                                         // ldp         fp, lr, [sp], #80
-#else
-    0xfd, 0x7b, 0xc1, 0xa8,                                         // ldp         fp, lr, [sp], #16
-#endif
     0xc0, 0x03, 0x5f, 0xd6                                          // ret
 };
 #else // x86

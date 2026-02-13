@@ -7,6 +7,8 @@
 //----------------------------------------------------------------------------
 #pragma once
 
+#include "Language/NeonAccel.h"
+
 namespace Js
 {
     typedef Var (*PFNCreateTypedArray)(Js::ArrayBufferBase* arrayBuffer, uint32 offSet, uint32 mappedLength, Js::JavascriptLibrary* javascriptLibrary);
@@ -427,6 +429,33 @@ namespace Js
                 Assert(byteSize >= newLength); // check for overflow
                 memset(typedBuffer + newStart, (int)typedValue, byteSize);
             }
+#if CHAKRA_NEON_AVAILABLE
+            else if (sizeof(TypeName) == sizeof(float))
+            {
+                // NEON fill for 4-byte element types (Float32Array, Int32Array, Uint32Array)
+                // Use the int32 fill since it's the same bit-width; the value is already typed.
+                NeonAccel::NeonFillInt32(
+                    reinterpret_cast<int32_t*>(typedBuffer + newStart),
+                    newLength,
+                    *reinterpret_cast<int32_t*>(&typedValue));
+            }
+            else if (sizeof(TypeName) == sizeof(double))
+            {
+                // NEON fill for 8-byte element types (Float64Array)
+                NeonAccel::NeonFillFloat64(
+                    reinterpret_cast<double*>(typedBuffer + newStart),
+                    newLength,
+                    *reinterpret_cast<double*>(&typedValue));
+            }
+            else if (sizeof(TypeName) == sizeof(int16))
+            {
+                // NEON fill for 2-byte element types (Int16Array, Uint16Array)
+                NeonAccel::NeonFillInt16(
+                    reinterpret_cast<int16_t*>(typedBuffer + newStart),
+                    newLength,
+                    *reinterpret_cast<int16_t*>(&typedValue));
+            }
+#endif
             else
             {
                 for (uint32 i = 0; i < newLength; i++)

@@ -7,6 +7,7 @@
 #include "RuntimeLibraryPch.h"
 #include "Types/PathTypeHandler.h"
 #include "Types/SpreadArgument.h"
+#include "Language/NeonAccel.h"
 
 // TODO: Change this generic fatal error to the descriptive one.
 #define AssertAndFailFast(x) if (!(x)) { Assert(x); Js::Throw::FatalInternalError(); }
@@ -4327,6 +4328,13 @@ using namespace Js;
         {
             memset(buffer, 0, sizeof(double) * length);
         }
+#if CHAKRA_NEON_AVAILABLE
+        else
+        {
+            // NEON-accelerated double fill: 2 doubles per 128-bit register
+            NeonAccel::NeonFillFloat64(reinterpret_cast<double*>(buffer), length, value);
+        }
+#else
         else
         {
             for (uint32 i = 0; i < length; i++)
@@ -4334,6 +4342,7 @@ using namespace Js;
                 buffer[i] = value;
             }
         }
+#endif
     }
 
     template<>
@@ -4343,6 +4352,13 @@ using namespace Js;
         {
             memset(buffer, *(byte*)&value, sizeof(int32)* length);
         }
+#if CHAKRA_NEON_AVAILABLE
+        else
+        {
+            // NEON-accelerated int32 fill: 4 ints per 128-bit register
+            NeonAccel::NeonFillInt32(reinterpret_cast<int32_t*>(buffer), length, value);
+        }
+#else
         else
         {
             for (uint32 i = 0; i < length; i++)
@@ -4350,6 +4366,7 @@ using namespace Js;
                 buffer[i] = value;
             }
         }
+#endif
     }
 
     template<>
@@ -4402,6 +4419,51 @@ using namespace Js;
 
         SparseArraySegment<int32> * head = static_cast<SparseArraySegment<int32>*>(GetHead());
         uint32 toIndexTrimmed = toIndex <= head->length ? toIndex : head->length;
+
+#if CHAKRA_NEON_AVAILABLE
+        // NEON-accelerated indexOf for native int arrays.
+        // Field(int32) == int32 when write barriers are off (standard for ARM64 builds).
+        // Guard with a compile-time size check to be safe.
+        static_assert(sizeof(Field(int32)) == sizeof(int32),
+            "NEON indexOf requires Field(int32) to be the same size as int32");
+
+        if (toIndexTrimmed > fromIndex)
+        {
+            // Get a raw pointer to the contiguous int32 element storage
+            int32* elements = &head->elements[0];
+            uint32 i = fromIndex;
+
+            // Vectorized scan: 4 int32 elements per NEON register
+            int32x4_t vSearch = vdupq_n_s32(searchAsInt32);
+            for (; i + 3 < toIndexTrimmed; i += 4)
+            {
+                int32x4_t vElems = vld1q_s32(elements + i);
+                uint32x4_t vCmp = vceqq_s32(vElems, vSearch);
+                // Check if any lane matched (any lane is 0xFFFFFFFF)
+                uint32x2_t reduced = vorr_u32(vget_low_u32(vCmp), vget_high_u32(vCmp));
+                if (vget_lane_u32(vpmax_u32(reduced, reduced), 0) != 0)
+                {
+                    // At least one match — find the exact lane
+                    for (uint32 j = i; j < i + 4 && j < toIndexTrimmed; j++)
+                    {
+                        if (elements[j] == searchAsInt32)
+                        {
+                            return j;
+                        }
+                    }
+                }
+            }
+
+            // Scalar tail
+            for (; i < toIndexTrimmed; i++)
+            {
+                if (elements[i] == searchAsInt32)
+                {
+                    return i;
+                }
+            }
+        }
+#else
         for (uint32 i = fromIndex; i < toIndexTrimmed; i++)
         {
             int32 element = head->GetElement(i);
@@ -4410,6 +4472,7 @@ using namespace Js;
                 return i;
             }
         }
+#endif
 
         // Element not found in the head segment. Keep looking only if the range of indices extends past
         // the head segment.

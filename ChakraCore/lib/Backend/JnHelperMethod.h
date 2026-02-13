@@ -11,6 +11,12 @@ extern "C"
 #else
     void __cdecl __chkstk(int);
 #endif
+
+#if defined(_ARM64_) && defined(__APPLE__)
+    // DarwinPCS varargs trampoline: spills register args to stack for va_list,
+    // then calls the real Entry* function via x16. See arm64_CallFunction.S.
+    void* arm64_CallDirectVarargs(void);
+#endif
 }
 
 #ifdef _CONTROL_FLOW_GUARD

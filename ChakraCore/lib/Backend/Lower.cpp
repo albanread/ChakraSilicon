@@ -12309,6 +12309,15 @@ Lowerer::GenerateDirectCall(IR::Instr* inlineInstr, IR::Opnd* funcObj, ushort ca
 {
     int32 argCount = m_lowererMD.LowerCallArgs(inlineInstr, callflags);
     m_lowererMD.LoadHelperArgument(inlineInstr, funcObj);
+
+#if defined(_ARM64_) && defined(__APPLE__)
+    // DarwinPCS fix: C++ variadic helpers (CallDirect) require arguments on the stack.
+    // However, we now handle this via selective shadow stores in LowerMD.cpp.
+    // The trampoline approach (arm64_CallDirectVarargs) is disabled in favor of
+    // the "One Protocol" design where LowerMD handles the shadow stores for logic
+    // specific to CallDirect, while CallI (JS->JS) remains clean.
+#endif
+
     m_lowererMD.LowerCall(inlineInstr, (Js::ArgSlot)argCount); //to account for function object and callinfo
 
     return inlineInstr->m_prev;
