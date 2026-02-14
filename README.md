@@ -1,6 +1,12 @@
-# PAUSED
+# PAUSED February 2026
 
-**Project paused until LLM basic competence at problem solving is achieved.**
+_I revist this problem periodically to see if AIs really are as good as people think they are.
+
+They are getting a lot better.
+
+Lots of progress made, but not enough yet._
+
+**Project paused until LLM competence at problem solving is achieved.**
 
 See [Status Report](docs/bugs/JIT_CALL_BUGS_STATUS.md).
 
