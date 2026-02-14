@@ -16,6 +16,8 @@ extern "C"
     // DarwinPCS varargs trampoline: spills register args to stack for va_list,
     // then calls the real Entry* function via x16. See arm64_CallFunction.S.
     void* arm64_CallDirectVarargs(void);
+    void* arm64_CallIndirectMaybeVarargs(void);
+    void* arm64_CallIndirectCheckVarargs(void);
 #endif
 }
 

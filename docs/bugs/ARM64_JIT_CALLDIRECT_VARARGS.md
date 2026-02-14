@@ -3,9 +3,17 @@
 **Severity:** High — crashes and TypeErrors on all JIT-inlined builtin method calls
 **Platform:** Apple Silicon (ARM64 / AArch64, DarwinPCS)
 **Component:** JIT Backend — `LowerMD.cpp` (Lowerer), `Inline.cpp`, `Lower.cpp`
-**Status:** Open
+**Status:** In progress (targeted fix landed; full validation pending)
 **Reproducible:** Yes — deterministic after JIT tier-up
 **Related:** [ARM64_JIT_ARGUMENT_CORRUPTION.md](ARM64_JIT_ARGUMENT_CORRUPTION.md) — both bugs share the same root cause (DarwinPCS register/stack ABI mismatch)
+
+---
+
+## 2026-02-13 Update
+
+Current code now uses targeted DarwinPCS stack shadowing for `CallDirect` paths (instead of unconditional shadowing for all calls), while preserving JS overflow-argument layout for `CallI`.
+
+The companion 7+ argument corruption bug is now validated fixed. This varargs report remains open until the dedicated varargs repro suite is re-run end-to-end on the updated build.
 
 ---
 

@@ -1,0 +1,28 @@
+--- ChakraCore/lib/Backend/arm64/LowerMD.cpp
++++ ChakraCore/lib/Backend/arm64/LowerMD.cpp
+@@ -382,6 +382,24 @@
+             --intArgsLeft;
+         }
+         Lowerer::InsertMove(opndParam, helperArgOpnd, callInstr);
++#if defined(__APPLE__)
++        if (opndParam->IsRegOpnd())
++        {
++            Js::ArgSlot stackSlot = (helperArgOpnd->IsFloat()) ? (Js::ArgSlot)doubleArgsLeft : (Js::ArgSlot)intArgsLeft;
++            if (stackSlot < 8)
++            {
++                IntConstType offset = stackSlot * MachRegInt;
++                IR::RegOpnd * spBase = IR::RegOpnd::New(nullptr, this->GetRegStackPointer(), TyMachReg, this->m_func);
++                IR::IndirOpnd * stackOpnd = IR::IndirOpnd::New(spBase, int32(offset), TyMachReg, this->m_func);
++                IR::Instr * storeInstr = IR::Instr::New(Js::OpCode::STR, stackOpnd, opndParam->AsRegOpnd(), this->m_func);
++                callInstr->InsertBefore(storeInstr);
++
++                if (this->m_func->m_argSlotsForFunctionsCalled < (uint32)(stackSlot + 1))
++                {
++                    this->m_func->m_argSlotsForFunctionsCalled = stackSlot + 1;
++                }
++            }
++        }
++#endif
+         --argsLeft;
+     }
+     Assert(doubleArgsLeft == 0 && intArgsLeft == 0 && argsLeft == 0);

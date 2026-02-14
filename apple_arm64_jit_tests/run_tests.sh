@@ -40,6 +40,14 @@ fi
 # Allow override via environment
 CH_PATH="${CHAKRA_BIN:-$CH_PATH}"
 
+# Detect timeout command
+TIMEOUT_CMD=""
+if command -v gtimeout >/dev/null 2>&1; then
+    TIMEOUT_CMD="gtimeout 60s"
+elif command -v timeout >/dev/null 2>&1; then
+    TIMEOUT_CMD="timeout 60s"
+fi
+
 echo -e "${BLUE}=== Apple ARM64 JIT Call Bugs Test Suite ===${NC}"
 echo ""
 echo "Project Root: $PROJECT_ROOT"
@@ -97,7 +105,17 @@ run_test() {
     echo ""
 
     # Run the test
-    if "$CH_PATH" "$jit_flag" "$test_file" 2>&1; then
+    local run_cmd=()
+    if [ -n "$TIMEOUT_CMD" ]; then
+        run_cmd+=($TIMEOUT_CMD)
+    fi
+    run_cmd+=("$CH_PATH")
+    if [ -n "$jit_flag" ]; then
+        run_cmd+=("$jit_flag")
+    fi
+    run_cmd+=("$test_file")
+
+    if "${run_cmd[@]}" 2>&1; then
         echo -e "${GREEN}✓ $test_name PASSED${NC}"
         echo ""
         return 0
@@ -122,7 +140,13 @@ run_test_comparison() {
     # Run with JIT disabled (baseline)
     echo -e "${YELLOW}Running with JIT DISABLED (baseline)...${NC}"
     local nojit_output=$(mktemp)
-    if "$CH_PATH" -maxInterpretCount:1 -maxSimpleJitRunCount:1 -bgjit- "$test_file" > "$nojit_output" 2>&1; then
+    local base_cmd=()
+    if [ -n "$TIMEOUT_CMD" ]; then
+        base_cmd+=($TIMEOUT_CMD)
+    fi
+    base_cmd+=("$CH_PATH" -maxInterpretCount:1 -maxSimpleJitRunCount:1 -bgjit- "$test_file")
+
+    if "${base_cmd[@]}" > "$nojit_output" 2>&1; then
         echo -e "${GREEN}✓ No-JIT run completed${NC}"
         local nojit_passed=$(grep -c "PASS:" "$nojit_output" || echo 0)
         local nojit_failed=$(grep -c "FAIL:" "$nojit_output" || echo 0)
@@ -138,7 +162,13 @@ run_test_comparison() {
     # Run with JIT enabled
     echo -e "${YELLOW}Running with JIT ENABLED (testing fix)...${NC}"
     local jit_output=$(mktemp)
-    if "$CH_PATH" "$test_file" > "$jit_output" 2>&1; then
+    local jit_cmd=()
+    if [ -n "$TIMEOUT_CMD" ]; then
+        jit_cmd+=($TIMEOUT_CMD)
+    fi
+    jit_cmd+=("$CH_PATH" "$test_file")
+
+    if "${jit_cmd[@]}" > "$jit_output" 2>&1; then
         echo -e "${GREEN}✓ JIT-enabled run completed${NC}"
         local jit_passed=$(grep -c "PASS:" "$jit_output" || echo 0)
         local jit_failed=$(grep -c "FAIL:" "$jit_output" || echo 0)

@@ -12311,19 +12311,13 @@ Lowerer::GenerateDirectCall(IR::Instr* inlineInstr, IR::Opnd* funcObj, ushort ca
     m_lowererMD.LoadHelperArgument(inlineInstr, funcObj);
 
 #if defined(_ARM64_) && defined(__APPLE__)
-    // DarwinPCS: CallDirect targets variadic C++ Entry* helpers.
-    // Shadow-store slot 0 (function object) for va_start-based argument walking.
-    if (inlineInstr->m_opcode == Js::OpCode::CallDirect && funcObj->IsRegOpnd())
+    // DarwinPCS: CallDirect may target variadic C++ Entry* helpers.
+    // Route through the direct varargs trampoline, passing the real target in x16.
+    if (inlineInstr->m_opcode == Js::OpCode::CallDirect)
     {
-        IR::RegOpnd * spBase = IR::RegOpnd::New(nullptr, m_lowererMD.GetRegStackPointer(), TyMachReg, m_func);
-        IR::IndirOpnd * stackOpnd = IR::IndirOpnd::New(spBase, 0, TyMachReg, m_func);
-        IR::Instr * storeInstr = IR::Instr::New(Js::OpCode::STR, stackOpnd, funcObj->AsRegOpnd(), m_func);
-        inlineInstr->InsertBefore(storeInstr);
-
-        if (m_func->m_argSlotsForFunctionsCalled < 1)
-        {
-            m_func->m_argSlotsForFunctionsCalled = 1;
-        }
+        IR::RegOpnd * realTargetReg = IR::RegOpnd::New(nullptr, RegR16, TyMachPtr, m_func);
+        Lowerer::InsertMove(realTargetReg, inlineInstr->GetSrc1(), inlineInstr);
+        inlineInstr->SetSrc1(IR::HelperCallOpnd::New(IR::HelperCallDirectVarargs, m_func));
     }
 #endif
 

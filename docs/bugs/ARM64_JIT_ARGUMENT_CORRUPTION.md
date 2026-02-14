@@ -3,8 +3,19 @@
 **Severity:** High — silent data corruption at runtime
 **Platform:** Apple Silicon (ARM64 / AArch64, DarwinPCS)
 **Component:** JIT Backend — `LowerMD.cpp` (Lowerer) + `arm64_CallFunction.S` (call trampoline)
-**Status:** Open
-**Reproducible:** Yes — deterministic after JIT tier-up
+**Status:** Fixed (validated on current branch/build)
+**Reproducible:** Not reproduced in current validated repro tests
+
+---
+
+## 2026-02-13 Validation Update
+
+Validated with current `build/chjita64/bin/ch/ch`:
+
+- `tests/repro_cases/test_arg_corruption.js` → `PASS: 7-param test`
+- `tests/repro_cases/test_7p_900.js` → correct `28` results through iteration 899, then `DONE`
+
+The 7+ argument corruption/hang symptom described in this report was not reproduced after the fix set now on `main`.
 
 ---
 

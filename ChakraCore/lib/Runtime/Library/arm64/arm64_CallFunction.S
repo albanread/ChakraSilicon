@@ -67,6 +67,8 @@ NESTED_ENTRY arm64_CallFunction, _TEXT, NoHandler
     EPILOG_RESTORE_REG_PAIR_INDEXED fp, lr, 16  ; restore FP/LR
     ret                                         ; return
 
+
+
 NESTED_END arm64_CallFunction
 
 ;-------------------------------------------------------------------------------------------------------
@@ -222,6 +224,171 @@ LOCAL_LABEL(DirectNoOverflow):
 NESTED_END arm64_CallDirectVarargs
 
 ;-------------------------------------------------------------------------------------------------------
+; arm64_CallIndirectMaybeVarargs: Trampoline for selected indirect calls on DarwinPCS.
+;
+; LowerCallI routes only native-classified fixed-function indirect calls here.
+; The real target is passed in x16 by the caller. We build a contiguous argument
+; frame [function, callInfo, arg0, arg1, ...] so variadic Entry* callees using
+; va_start can read arguments from the stack correctly.
+;
+; On entry:
+;   x16     = real target Entry* function address
+;   x0..x7  = standard JS call args (function, callInfo, values[0..5])
+;   [SP+0]  = overflow args (values[6+]), if Count > 6
+;
+NESTED_ENTRY arm64_CallIndirectMaybeVarargs, _TEXT, NoHandler
+
+    PROLOG_SAVE_REG_PAIR_INDEXED fp, lr, -16    ; save FP/LR, SP -= 16, FP = SP
+
+    ; Extract JS argument count from callInfo (lower 24 bits)
+    and     x9, x1, #0xFFFFFF      ; x9 = Count
+
+    ; Total stack slots needed = Count + 2 (function + callInfo + Count values)
+    ; Always allocate at least 8 slots (64 bytes) so we can unconditionally
+    ; store all 8 register args via STP without bounds checks.
+    add     x10, x9, #2            ; x10 = Count + 2
+    cmp     x10, #8
+    mov     x11, #8
+    csel    x10, x10, x11, gt      ; x10 = max(Count + 2, 8)
+
+    ; Round up to even number of slots for 16-byte stack alignment
+    add     x10, x10, #1
+    bic     x10, x10, #1           ; x10 = even-aligned slot count
+
+    ; Allocate outgoing stack area
+    lsl     x10, x10, #3           ; convert slots to bytes
+    sub     sp, sp, x10            ; allocate
+
+    ; Store all 8 register args unconditionally (we have at least 64 bytes)
+    stp     x0, x1, [sp, #0]       ; [SP+0]  = function, [SP+8]  = callInfo
+    stp     x2, x3, [sp, #16]      ; [SP+16] = arg0,     [SP+24] = arg1
+    stp     x4, x5, [sp, #32]      ; [SP+32] = arg2,     [SP+40] = arg3
+    stp     x6, x7, [sp, #48]      ; [SP+48] = arg4,     [SP+56] = arg5
+
+    ; Copy overflow args from the caller's outgoing area (if Count > 6).
+    ; Original caller SP is at [FP + 16].
+    subs    x11, x9, #6            ; x11 = overflow count = Count - 6
+    b.le    LOCAL_LABEL(IndirectNoOverflow)
+
+    add     x12, fp, #16           ; source: caller overflow area
+    add     x13, sp, #64           ; dest: after the 8 register shadow slots
+
+LOCAL_LABEL(IndirectCopyLoop):
+    ldr     x14, [x12], #8
+    str     x14, [x13], #8
+    subs    x11, x11, #1
+    b.gt    LOCAL_LABEL(IndirectCopyLoop)
+
+LOCAL_LABEL(IndirectNoOverflow):
+    ; Call the real Entry* function via x16.
+    blr     x16
+
+    ; Restore stack and return (result is in x0)
+    mov     sp, fp
+    EPILOG_RESTORE_REG_PAIR_INDEXED fp, lr, 16
+    ret
+
+NESTED_END arm64_CallIndirectMaybeVarargs
+
+;-------------------------------------------------------------------------------------------------------
+; arm64_CallIndirectCheckVarargs: Runtime-checking trampoline for ALL indirect calls on DarwinPCS.
+;
+; For dynamic (non-fixed) indirect calls, the JIT cannot determine at compile time whether
+; the callee is a script function (JIT or interpreter) or a native/builtin Entry* function.
+; This trampoline performs a fast runtime check:
+;
+;   1. Load functionInfo from the function object (x0)
+;   2. Check functionInfo->functionBodyImpl:
+;        - Non-null → script function → tail-call directly via BR x16 (zero-frame overhead)
+;        - Null     → native/builtin → build contiguous stack frame for DarwinPCS va_start
+;
+; The script fast path adds only 3 instructions (2 LDR + 1 CBZ + 1 BR) of overhead.
+;
+; IMPORTANT: The struct offsets below MUST match the C++ object layout.
+;   0x28 = offsetof(JavascriptFunction, functionInfo)   — see JavascriptFunction::GetOffsetOfFunctionInfo()
+;   0x08 = offsetof(FunctionInfo, functionBodyImpl)      — see FunctionInfo::GetFunctionBodyImplOffset()
+; A runtime assertion in LowerMD.cpp verifies these at startup when call-split tracing is enabled.
+;
+; On entry:
+;   x0      = function object (JavascriptFunction*)
+;   x1      = callInfo (Count:24 | Flags:8 | unused:32)
+;   x2-x7   = first 6 variadic args (values[0..5])
+;   [SP+0]  = overflow args (values[6+]), if Count > 6
+;   x16     = real target entry point (loaded from Type by JIT)
+;   LR      = return address in JIT code
+;
+NESTED_ENTRY arm64_CallIndirectCheckVarargs, _TEXT, NoHandler
+
+    ; ---- Runtime check: script function or native/builtin? ----
+    ; x17 is IP1 (intra-procedure scratch), safe to clobber here.
+    ldr     x17, [x0, #0x28]                    ; x17 = funcObj->functionInfo
+    ldr     x17, [x17, #0x08]                    ; x17 = functionInfo->functionBodyImpl
+    cbz     x17, LOCAL_LABEL(CheckNativePath)     ; NULL → native/builtin → need contiguous frame
+
+    ; ---- SCRIPT FAST PATH ----
+    ; functionBodyImpl != NULL → this is a script function (JIT-compiled or interpreted).
+    ; Tail-call directly: no frame, no stack modification.
+    ; The callee sees the same SP, LR, and overflow args as if the JIT called it directly.
+    br      x16
+
+LOCAL_LABEL(CheckNativePath):
+    ; ---- NATIVE PATH ----
+    ; functionBodyImpl == NULL → this is a native/builtin Entry* function.
+    ; Build a contiguous stack frame [function, callInfo, arg0, arg1, ...]
+    ; so the callee's va_start reads the correct values from the stack.
+
+    PROLOG_SAVE_REG_PAIR_INDEXED fp, lr, -16    ; save FP/LR, SP -= 16, FP = SP
+
+    ; Extract JS argument count from callInfo (lower 24 bits)
+    and     x9, x1, #0xFFFFFF      ; x9 = Count
+
+    ; Total stack slots = Count + 2 (function + callInfo + Count values)
+    ; Minimum 8 so we can unconditionally store all register args
+    add     x10, x9, #2            ; x10 = Count + 2
+    cmp     x10, #8
+    mov     x11, #8
+    csel    x10, x10, x11, gt      ; x10 = max(Count + 2, 8)
+
+    ; Round up to even for 16-byte stack alignment
+    add     x10, x10, #1
+    bic     x10, x10, #1
+
+    ; Allocate outgoing stack area
+    lsl     x10, x10, #3           ; convert slots to bytes
+    sub     sp, sp, x10            ; allocate
+
+    ; Store all 8 register args unconditionally (we have at least 64 bytes)
+    stp     x0, x1, [sp, #0]       ; [SP+0]  = function, [SP+8]  = callInfo
+    stp     x2, x3, [sp, #16]      ; [SP+16] = arg0,     [SP+24] = arg1
+    stp     x4, x5, [sp, #32]      ; [SP+32] = arg2,     [SP+40] = arg3
+    stp     x6, x7, [sp, #48]      ; [SP+48] = arg4,     [SP+56] = arg5
+
+    ; Copy overflow args from the caller's outgoing area (if Count > 6).
+    ; Original caller SP is at [FP + 16].
+    subs    x11, x9, #6            ; x11 = overflow count = Count - 6
+    b.le    LOCAL_LABEL(CheckNativeNoOverflow)
+
+    add     x12, fp, #16           ; source: caller overflow area
+    add     x13, sp, #64           ; dest: after the 8 register shadow slots
+
+LOCAL_LABEL(CheckNativeCopyLoop):
+    ldr     x14, [x12], #8
+    str     x14, [x13], #8
+    subs    x11, x11, #1
+    b.gt    LOCAL_LABEL(CheckNativeCopyLoop)
+
+LOCAL_LABEL(CheckNativeNoOverflow):
+    ; Call the real Entry* function via x16.
+    blr     x16
+
+    ; Restore stack and return (result is in x0)
+    mov     sp, fp
+    EPILOG_RESTORE_REG_PAIR_INDEXED fp, lr, 16
+    ret
+
+NESTED_END arm64_CallIndirectCheckVarargs
+
+;-------------------------------------------------------------------------------------------------------
 ; arm64_DebugTrampoline: Universal JIT->C++ call trampoline for Apple ARM64 (DarwinPCS).
 ;
 ; On DarwinPCS, variadic C++ functions read args from the stack via va_start,
@@ -355,11 +522,16 @@ NESTED_ENTRY _ZN2Js21InterpreterStackFrame22StaticInterpreterThunkEPNS_16Recycla
     and     x9, x1, #0xFFFFFF      ; x9 = Count
 
     ; Calculate stack space needed: 16-byte aligned
-    ; Space = (Count + 2) * 8, rounded up to 16
+    ; We always write 8 slots (function, callInfo, x2-x7 = 64 bytes) unconditionally,
+    ; so we must allocate at least 64 bytes. For Count > 6, we need more for overflow args.
+    ; Space = max(Count + 2, 8) * 8, rounded up to 16
     add     x10, x9, #2            ; +2 for function, callInfo
+    cmp     x10, #8
+    mov     x11, #8
+    csel    x10, x10, x11, gt      ; x10 = max(Count+2, 8) — always room for 8 slots
     add     x10, x10, #1           ; round up
     lsr     x10, x10, #1           ; divide by 2
-    sub     sp, sp, x10, lsl #4    ; allocate 16-byte aligned
+    sub     sp, sp, x10, lsl #4    ; allocate 16-byte aligned (minimum 64 bytes)
 
     ; Build JavascriptCallStackLayout on stack
     stp     x0, x1, [sp, #0]       ; function, callInfo

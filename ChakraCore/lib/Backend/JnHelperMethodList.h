@@ -658,6 +658,8 @@ HELPERCALLCRT(GuardCheckCall, AttrCanNotBeReentrant)
 // DarwinPCS trampoline for CallDirect to variadic Entry* functions.
 // Spills register-passed args to the stack so va_start works correctly.
 HELPERCALL(CallDirectVarargs, arm64_CallDirectVarargs, AttrCanNotBeReentrant)
+HELPERCALL(CallIndirectMaybeVarargs, arm64_CallIndirectMaybeVarargs, AttrCanNotBeReentrant)
+HELPERCALL(CallIndirectCheckVarargs, arm64_CallIndirectCheckVarargs, AttrCanNotBeReentrant)
 #endif
 
 // This is statically initialized.

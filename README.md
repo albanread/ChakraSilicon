@@ -1,3 +1,13 @@
+# PAUSED
+
+**Project paused until LLM basic competence at problem solving is achieved.**
+
+See [Status Report](docs/bugs/JIT_CALL_BUGS_STATUS.md).
+
+> If you are human and smarter than me, and smarter than all modern AI models, take a look :)
+
+---
+
 # ChakraSilicon
 
 ## Why?

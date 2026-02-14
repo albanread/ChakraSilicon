@@ -6,6 +6,188 @@
 
 #include "Backend.h"
 #include "Language/JavascriptFunctionArgIndex.h"
+#if defined(__APPLE__)
+#include <cstdlib>
+#include <cstdio>
+#endif
+
+#if defined(__APPLE__)
+namespace
+{
+    struct Arm64CallSplitStats
+    {
+        uint64 totalCallI;
+        uint64 fixedTarget;
+        uint64 fixedTargetScript;
+        uint64 fixedTargetNative;
+        uint64 fixedTargetUnknown;
+        uint64 fixedTargetRoutedToMaybeVarargs;
+        uint64 dynamicTarget;
+        bool atexitRegistered;
+    };
+
+    static Arm64CallSplitStats & GetArm64CallSplitStats()
+    {
+        static Arm64CallSplitStats stats = {};
+        return stats;
+    }
+
+    // CHAKRA_TRACE_CALL_SPLIT:
+    //   0/unset: disabled
+    //   1: print summary at process exit
+    //   2: summary + per-lowered-call site trace lines
+    static int Arm64GetCallSplitTraceMode()
+    {
+        static int traceMode = -1;
+        if (traceMode != -1)
+        {
+            return traceMode;
+        }
+
+        const char * const env = getenv("CHAKRA_TRACE_CALL_SPLIT");
+        if (env == nullptr || env[0] == '\0' || env[0] == '0')
+        {
+            traceMode = 0;
+        }
+        else if (env[0] == '2')
+        {
+            traceMode = 2;
+        }
+        else
+        {
+            traceMode = 1;
+        }
+
+        return traceMode;
+    }
+
+    // Verify that struct offsets used by arm64_CallIndirectCheckVarargs assembly
+    // match the actual C++ object layout. Called once during init.
+    static void VerifyArm64TrampolineOffsets()
+    {
+        // These constants are hardcoded in arm64_CallFunction.S (arm64_CallIndirectCheckVarargs):
+        //   ldr x17, [x0, #0x28]   → JavascriptFunction::functionInfo
+        //   ldr x17, [x17, #0x08]  → FunctionInfo::functionBodyImpl
+        constexpr uint32 expectedFunctionInfoOffset = 0x28;
+        constexpr uint32 expectedBodyImplOffset = 0x08;
+
+        const uint32 actualFunctionInfoOffset = static_cast<uint32>(Js::JavascriptFunction::GetOffsetOfFunctionInfo());
+        const uint32 actualBodyImplOffset = static_cast<uint32>(Js::FunctionInfo::GetFunctionBodyImplOffset());
+
+        if (actualFunctionInfoOffset != expectedFunctionInfoOffset)
+        {
+            fprintf(stderr,
+                "[arm64-call-split] FATAL: JavascriptFunction::functionInfo offset mismatch! "
+                "Assembly uses 0x%x, actual is 0x%x. arm64_CallIndirectCheckVarargs will crash.\n",
+                expectedFunctionInfoOffset, actualFunctionInfoOffset);
+            abort();
+        }
+        if (actualBodyImplOffset != expectedBodyImplOffset)
+        {
+            fprintf(stderr,
+                "[arm64-call-split] FATAL: FunctionInfo::functionBodyImpl offset mismatch! "
+                "Assembly uses 0x%x, actual is 0x%x. arm64_CallIndirectCheckVarargs will crash.\n",
+                expectedBodyImplOffset, actualBodyImplOffset);
+            abort();
+        }
+    }
+
+    static void DumpArm64CallSplitStatsAtExit()
+    {
+        if (Arm64GetCallSplitTraceMode() <= 0)
+        {
+            return;
+        }
+
+        const Arm64CallSplitStats & stats = GetArm64CallSplitStats();
+        fprintf(stderr,
+            "\n=== ARM64 CALL SPLIT STATS ===\n"
+            "  LowerCallI total                   : %llu\n"
+            "  Fixed-function targets             : %llu\n"
+            "    fixed script targets             : %llu\n"
+            "    fixed native targets             : %llu\n"
+            "    fixed unknown-class targets      : %llu\n"
+            "    fixed routed maybe-varargs tramp : %llu\n"
+            "  Dynamic/non-fixed targets          : %llu\n"
+            "=== END ARM64 CALL SPLIT STATS ===\n",
+            static_cast<unsigned long long>(stats.totalCallI),
+            static_cast<unsigned long long>(stats.fixedTarget),
+            static_cast<unsigned long long>(stats.fixedTargetScript),
+            static_cast<unsigned long long>(stats.fixedTargetNative),
+            static_cast<unsigned long long>(stats.fixedTargetUnknown),
+            static_cast<unsigned long long>(stats.fixedTargetRoutedToMaybeVarargs),
+            static_cast<unsigned long long>(stats.dynamicTarget));
+    }
+
+    static void Arm64TraceCallSplitDecision(
+        Func * const func,
+        const bool hasFixedTarget,
+        const bool fixedTargetClassKnown,
+        const bool fixedTargetIsScript,
+        const bool routedToMaybeVarargs)
+    {
+        // Always verify assembly offsets once, regardless of trace mode.
+        static bool offsetsVerified = false;
+        if (!offsetsVerified)
+        {
+            VerifyArm64TrampolineOffsets();
+            offsetsVerified = true;
+        }
+
+        const int traceMode = Arm64GetCallSplitTraceMode();
+        if (traceMode <= 0)
+        {
+            return;
+        }
+
+        Arm64CallSplitStats & stats = GetArm64CallSplitStats();
+        if (!stats.atexitRegistered)
+        {
+            VerifyArm64TrampolineOffsets();
+            atexit(DumpArm64CallSplitStatsAtExit);
+            stats.atexitRegistered = true;
+        }
+
+        stats.totalCallI++;
+        if (hasFixedTarget)
+        {
+            stats.fixedTarget++;
+            if (!fixedTargetClassKnown)
+            {
+                stats.fixedTargetUnknown++;
+            }
+            else if (fixedTargetIsScript)
+            {
+                stats.fixedTargetScript++;
+            }
+            else
+            {
+                stats.fixedTargetNative++;
+            }
+
+            if (routedToMaybeVarargs)
+            {
+                stats.fixedTargetRoutedToMaybeVarargs++;
+            }
+        }
+        else
+        {
+            stats.dynamicTarget++;
+        }
+
+        if (traceMode >= 2)
+        {
+            fprintf(stderr,
+                "[arm64-call-split] fn#%u fixed=%d known=%d script=%d route=maybe-varargs:%d\n",
+                static_cast<unsigned>(func->GetFunctionNumber()),
+                hasFixedTarget ? 1 : 0,
+                fixedTargetClassKnown ? 1 : 0,
+                fixedTargetIsScript ? 1 : 0,
+                routedToMaybeVarargs ? 1 : 0);
+        }
+    }
+}
+#endif
 
 const Js::OpCode LowererMD::MDUncondBranchOpcode = Js::OpCode::B;
 const Js::OpCode LowererMD::MDMultiBranchOpcode = Js::OpCode::BR;
@@ -459,6 +641,18 @@ LowererMD::LowerCallIDynamic(IR::Instr *callInstr, IR::Instr*saveThisArgOutInstr
     IR::RegOpnd    *funcObjOpnd = callInstr->UnlinkSrc1()->AsRegOpnd();
     GeneratePreCall(callInstr, funcObjOpnd, insertBeforeInstrForCFG);
 
+#if defined(__APPLE__)
+    // DarwinPCS: Dynamic calls may target native/builtin Entry* functions that
+    // require a contiguous stack frame for va_start. Route through the runtime-
+    // checking trampoline which inspects the callee to decide.
+    {
+        IR::RegOpnd* realTargetReg = IR::RegOpnd::New(nullptr, RegR16, TyMachPtr, this->m_func);
+        Lowerer::InsertMove(realTargetReg, callInstr->GetSrc1(), callInstr);
+
+        callInstr->SetSrc1(IR::HelperCallOpnd::New(IR::HelperCallIndirectCheckVarargs, this->m_func));
+    }
+#endif
+
     // functionOpnd is the first argument.
     IR::Opnd * opndParam = this->GetOpndForArgSlot(0);
     Lowerer::InsertMove(opndParam, funcObjOpnd, callInstr);
@@ -597,6 +791,64 @@ LowererMD::LowerCallI(IR::Instr * callInstr, ushort callFlags, bool isHelper, IR
     }
 
     IR::Instr * stackParamInsert = GeneratePreCall(callInstr, functionObjOpnd, insertBeforeInstrForCFGCheck);
+
+#if defined(__APPLE__)
+    bool hasFixedTarget = false;
+    bool fixedTargetClassKnown = false;
+    bool fixedTargetIsScript = false;
+    bool useIndirectMaybeVarargsTrampoline = false;
+    bool useDynamicCheckTrampoline = false;
+    if (callInstr->HasFixedFunctionAddressTarget())
+    {
+        hasFixedTarget = true;
+        FixedFieldInfo* fixedFunction = callInstr->GetFixedFunction();
+        Js::Var fixedFunctionVar = reinterpret_cast<Js::Var>(fixedFunction->GetFieldValue());
+        if (fixedFunctionVar != nullptr && Js::VarIs<Js::JavascriptFunction>(fixedFunctionVar))
+        {
+            fixedTargetClassKnown = true;
+            Js::JavascriptFunction* fixedFunctionObj = Js::VarTo<Js::JavascriptFunction>(fixedFunctionVar);
+            // Script functions must keep the JS overflow-only calling convention.
+            // Native/builtin entrypoints may require DarwinPCS varargs stack layout.
+            fixedTargetIsScript = fixedFunctionObj->IsScriptFunction();
+            useIndirectMaybeVarargsTrampoline = !fixedTargetIsScript;
+        }
+    }
+    else
+    {
+        // Dynamic (non-fixed) target: we cannot determine at JIT compile time whether
+        // the callee is a script function or a native/builtin Entry*. Route through
+        // arm64_CallIndirectCheckVarargs which performs a runtime check:
+        //   - Script functions → tail-call directly (zero overhead)
+        //   - Native/builtin   → build contiguous frame for DarwinPCS va_start
+        useDynamicCheckTrampoline = true;
+    }
+
+    Arm64TraceCallSplitDecision(
+        this->m_func,
+        hasFixedTarget,
+        fixedTargetClassKnown,
+        fixedTargetIsScript,
+        useIndirectMaybeVarargsTrampoline || useDynamicCheckTrampoline);
+
+    if (useIndirectMaybeVarargsTrampoline)
+    {
+        // Fixed native target: unconditionally route through contiguous-frame trampoline.
+        IR::RegOpnd* realTargetReg = IR::RegOpnd::New(nullptr, RegR16, TyMachPtr, this->m_func);
+        Lowerer::InsertMove(realTargetReg, callInstr->GetSrc1(), callInstr);
+
+        callInstr->SetSrc1(IR::HelperCallOpnd::New(IR::HelperCallIndirectMaybeVarargs, this->m_func));
+    }
+    else if (useDynamicCheckTrampoline)
+    {
+        // Dynamic target: route through runtime-checking trampoline.
+        // The trampoline inspects the function object to determine script vs native,
+        // and only builds the contiguous stack frame for native Entry* callees.
+        IR::RegOpnd* realTargetReg = IR::RegOpnd::New(nullptr, RegR16, TyMachPtr, this->m_func);
+        Lowerer::InsertMove(realTargetReg, callInstr->GetSrc1(), callInstr);
+
+        callInstr->SetSrc1(IR::HelperCallOpnd::New(IR::HelperCallIndirectCheckVarargs, this->m_func));
+    }
+#endif
 
     // We need to get the calculated CallInfo in SimpleJit because that doesn't include any changes for stack alignment
     IR::IntConstOpnd *callInfo;
